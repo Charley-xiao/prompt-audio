@@ -43,7 +43,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         wav, prompt = batch
         z, mu, logvar, prompt_e = self(wav, prompt)
 
-        print(f"Batch size: {wav.size(0)}, Latent shape: {z.shape}, Prompt shape: {prompt_e.shape}")
+        # print(f"Batch size: {wav.size(0)}, Latent shape: {z.shape}, Prompt shape: {prompt_e.shape}")
 
         # Noise scheduling
         bsz = z.size(0)
@@ -51,10 +51,10 @@ class DiffusionVAEPipeline(pl.LightningModule):
             0, self.scheduler.num_train_timesteps,
             (bsz,), device=self.device, dtype=torch.long
         )
-        print(f"Time steps: {t}, shape: {t.shape}")
+        # print(f"Time steps: {t}, shape: {t.shape}")
         noise  = torch.randn_like(z)
         noisy_z = self.scheduler.add_noise(z, noise, t)
-        print(f"Noisy latent shape: {noisy_z.shape}, Noise shape: {noise.shape}")
+        # print(f"Noisy latent shape: {noisy_z.shape}, Noise shape: {noise.shape}")
 
         # Predict noise
         noise_pred = self.unet(noisy_z, t, prompt_e)
