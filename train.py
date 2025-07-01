@@ -20,7 +20,7 @@ if __name__ == "__main__":
     )
 
     sample_len = args.segment_ms * 16  # 16 kHz
-    model = DiffusionVAEPipeline(sample_length=sample_len)
+    model = DiffusionVAEPipeline(latent_ch=32, sample_length=sample_len)
 
     trainer = pl.Trainer(
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
