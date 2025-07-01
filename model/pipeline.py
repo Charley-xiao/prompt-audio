@@ -73,12 +73,12 @@ class DiffusionVAEPipeline(pl.LightningModule):
     @torch.no_grad()
     def generate(self, prompts: list[str], num_steps: int = 50):
         self.eval()
+        self.scheduler = self.scheduler.to(self.device)
         cond = self.textenc(prompts, device=self.device)
-        bsz  = cond.size(0)
-        # Sample initial noise
-        lat  = torch.randn(bsz, self.hparams.latent_ch,
-                           self.hparams.sample_length // 8,
-                           device=self.device)
+        bsz = cond.size(0)
+        lat = torch.randn(bsz, self.hparams.latent_ch,
+                          self.hparams.sample_length // 8,
+                          device=self.device)
         self.scheduler.set_timesteps(num_steps, device=self.device)
         for t in self.scheduler.timesteps:
             noise_pred = self.unet(lat, t, cond)
