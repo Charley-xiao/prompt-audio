@@ -50,7 +50,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
             (bsz,), device=self.device, dtype=torch.long
         )
         noise  = torch.randn_like(z)
-        noisy_z = self.scheduler.q_sample(z, t, noise)
+        noisy_z = self.scheduler.add_noise(z, noise, t)
 
         # Predict noise
         noise_pred = self.unet(noisy_z, t, prompt_e)
