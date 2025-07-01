@@ -5,28 +5,25 @@ from diffusers import UNet2DConditionModel
 
 
 class AudioEncoder(nn.Module):
-    """Conv1d -> … -> global-avg -> mu, logvar"""
-    def __init__(self, latent_ch: int = 64):
+    def __init__(self, latent_ch: int = 32):
         super().__init__()
         self.conv = nn.Sequential(
             nn.Conv1d(1, 32, 4, 2, 1), nn.GELU(),
             nn.Conv1d(32, 64, 4, 2, 1), nn.GELU(),
             nn.Conv1d(64, 128, 4, 2, 1), nn.GELU(),
         )
-        self.mu = nn.Linear(128, latent_ch)
-        self.logvar = nn.Linear(128, latent_ch)
+        self.mu = nn.Conv1d(128, latent_ch, 1)
+        self.logvar = nn.Conv1d(128, latent_ch, 1)
 
     def forward(self, wav: torch.Tensor):
         h = self.conv(wav)
-        h = h.mean(dim=-1)
         return self.mu(h), self.logvar(h)
     
 
 class AudioDecoder(nn.Module):
-    """latent z to waveform"""
-    def __init__(self, latent_ch: int = 64, target_len: int = 16000):
+    def __init__(self, latent_ch: int = 32, target_len: int = 160_000):
         super().__init__()
-        self.fc = nn.Linear(latent_ch, 128)
+        self.pre = nn.Conv1d(latent_ch, 128, 1)
         self.deconv = nn.Sequential(
             nn.ConvTranspose1d(128, 64, 4, 2, 1), nn.GELU(),
             nn.ConvTranspose1d(64 , 32, 4, 2, 1), nn.GELU(),
@@ -35,7 +32,7 @@ class AudioDecoder(nn.Module):
         self.target_len = target_len
 
     def forward(self, z: torch.Tensor):
-        h = self.fc(z).unsqueeze(-1)
+        h = self.pre(z)
         wav = self.deconv(h)
         return wav[..., : self.target_len]
     

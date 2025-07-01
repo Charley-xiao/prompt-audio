@@ -8,7 +8,7 @@ from diffusers import DDPMScheduler
 class DiffusionVAEPipeline(pl.LightningModule):
     def __init__(
         self,
-        latent_ch=64,
+        latent_ch=32,
         lr=2e-4,
         beta_kl=0.001,
         beta_rec=10.0,
