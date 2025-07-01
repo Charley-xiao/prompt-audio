@@ -92,7 +92,7 @@ class CondUNet(nn.Module):
 
         eps = self.unet(
             sample=h,
-            timesteps=timesteps,
+            timestep=timesteps,
             encoder_hidden_states=enc_hid,
         ).sample.squeeze(-1)
 
