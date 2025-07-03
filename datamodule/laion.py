@@ -12,12 +12,16 @@ class LAIONAudioIterable(IterableDataset):
         segment_ms: int = 1_000,
         laion_path: str = "laion/LAION-Audio-300M",
         max_rows: int | None = None, # reserved for debugging
+        data_files: str | list[str] | None = None, # reserved for debugging
     ):
         super().__init__()
         self.seglen = sample_rate * segment_ms // 1000
-        ds = load_dataset(
-            laion_path, split=split, streaming=True
-        )
+        if data_files is None:
+            ds = load_dataset(laion_path, split=split, streaming=True)
+        else:
+            ds = load_dataset(
+                laion_path, split=split, streaming=True, data_files=data_files
+            )
         ds = ds.cast_column("audio.mp3", Audio(sampling_rate=sample_rate))
         self.ds = ds if max_rows is None else ds.take(max_rows)
 

@@ -11,12 +11,15 @@ if __name__ == "__main__":
     p.add_argument("--segment_ms", type=int, default=10_000)
     p.add_argument("--max_rows",    type=int, default=None,
                    help="for debugging, set to None for full dataset")
+    p.add_argument("--data_files", type=str, default=None,
+                   help="for debugging, specify a file or list of files to use")
     args = p.parse_args()
 
     dm = LAIONAudioDataModule(
         batch_size=args.batch_size,
         segment_ms=args.segment_ms,
         max_rows=args.max_rows,
+        data_files=args.data_files
     )
 
     sample_len = args.segment_ms * 16  # 16 kHz
