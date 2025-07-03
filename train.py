@@ -36,6 +36,7 @@ if __name__ == "__main__":
     trainer.fit(model, dm)
 
     wav = model.generate(["A melancholic piano solo"], num_steps=50)
+    wav = wav.squeeze(0)
     os.makedirs("samples", exist_ok=True)
     torchaudio.save("samples/demo.wav", wav, 16_000)
     print("Sample saved to samples/demo.wav")
