@@ -48,7 +48,7 @@ class PromptEncoder(nn.Module):
     @torch.no_grad()
     def forward(self, prompts: list[str], device):
         tok = self.tokenizer(
-            prompts, padding=True, truncation=True, return_tensors="pt"
+            prompts, padding=True, truncation=True, return_tensors="pt", max_length=512
         ).to(device)
         hid = self.encoder(**tok).last_hidden_state
         pooled = hid.mean(dim=1)

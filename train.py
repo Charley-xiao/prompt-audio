@@ -31,6 +31,14 @@ if __name__ == "__main__":
         max_epochs=args.epochs,
         precision=32,
         log_every_n_steps=10,
+        callbacks=[
+            pl.callbacks.ModelCheckpoint(
+                dirpath="checkpoints",
+                filename="model-{epoch:02d}-{step}",
+                save_top_k=-1,
+                every_n_train_steps=1000
+            )
+        ]
     )
 
     trainer.fit(model, dm)
