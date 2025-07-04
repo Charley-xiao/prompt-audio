@@ -16,12 +16,13 @@ class CLAPAudioEmbedding:
             wav16 = wav16.squeeze(1)
         if self.target_sr != 16_000:
             wav48 = torchaudio.functional.resample(
-                wav16, orig_freq=16_000, new_freq=self.target_sr
+                wav16.cpu(), orig_freq=16_000, new_freq=self.target_sr
             )
         else:
-            wav48 = wav16
+            wav48 = wav16.cpu().float()
+        audio_list = [w.numpy() for w in wav48]
         inputs = self.processor(
-            audios=wav48,
+            audios=audio_list,
             sampling_rate=self.target_sr,
             return_tensors="pt",
             padding=True,
@@ -39,3 +40,10 @@ class CLAPAudioEmbedding:
 
         emb = self.model.get_text_features(**inputs)
         return torch.nn.functional.normalize(emb, dim=-1)
+
+
+if __name__ == "__main__":
+    clap = CLAPAudioEmbedding(device="cuda")
+    dummy = torch.randn(4, 1, 16_000)
+    emb = clap(dummy)
+    print(emb.shape)
