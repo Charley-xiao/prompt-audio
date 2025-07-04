@@ -1,5 +1,7 @@
 # Prompt-Audio
 
+![](asset/overview.jpg)
+
 ## Installation
 
 ```bash
