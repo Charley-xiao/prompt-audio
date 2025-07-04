@@ -4,7 +4,6 @@ from model.backbone import AudioEncoder, AudioDecoder, PromptEncoder, VRFMCondUN
 from model.clap_module import CLAPAudioEmbedding
 from torcheval.metrics import FrechetAudioDistance
 from torchmetrics.aggregation import MeanMetric
-from model.pipeline.fm import FlowScheduler
 
 
 class PosteriorEncoder(nn.Module):
@@ -23,6 +22,29 @@ class PosteriorEncoder(nn.Module):
         out = self.net(cat)
         mu, logvar = out.chunk(2, dim=1)
         return mu, logvar
+    
+
+class FlowScheduler:
+    def __init__(self, num_train_timesteps=1000):
+        self.set_steps(num_train_timesteps)
+
+    def set_steps(self, n):
+        self.num_steps = n
+        self.timesteps = torch.linspace(0.0, 1.0, n + 1)
+
+    def latent_prior(self, shape, device):
+        return torch.randn(shape, device=device)
+
+    def reverse_flow(self, unet, lat, cond, z_lat, device):
+        dt = -1.0 / self.num_steps
+        for step in reversed(range(self.num_steps)):
+            t  = self.timesteps[step + 1].to(device)
+            tp = t + dt
+            v1 = unet(lat, t.expand(lat.size(0)), cond, z_lat)
+            lat_euler = lat + dt * v1
+            v2 = unet(lat_euler, tp.expand(lat.size(0)), cond, z_lat)
+            lat = lat + dt * 0.5 * (v1 + v2)
+        return lat
 
 
 class VRFMVAEPipeline(pl.LightningModule):
