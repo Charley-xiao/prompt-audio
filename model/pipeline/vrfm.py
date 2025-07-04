@@ -1,6 +1,6 @@
 import torch, torch.nn as nn, torch.nn.functional as F
 import pytorch_lightning as pl
-from model.backbone import AudioEncoder, AudioDecoder, PromptEncoder, CondUNet
+from model.backbone import AudioEncoder, AudioDecoder, PromptEncoder, VRFMCondUNet
 from model.clap_module import CLAPAudioEmbedding
 from torcheval.metrics import FrechetAudioDistance
 from torchmetrics.aggregation import MeanMetric
@@ -45,7 +45,7 @@ class VRFMVAEPipeline(pl.LightningModule):
         self.decoder = AudioDecoder(latent_ch, target_len=sample_length)
         self.textenc = PromptEncoder(proj_dim=128)
         latent_steps = sample_length // 8
-        self.unet = CondUNet(
+        self.unet = VRFMCondUNet(
             latent_ch, cond_dim=128, latent_steps=latent_steps,
             extra_cond_dim=latent_ch,
         )
