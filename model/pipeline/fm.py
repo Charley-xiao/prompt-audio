@@ -33,7 +33,7 @@ class FlowVAEPipeline(pl.LightningModule):
         beta_kl=1e-3,
         beta_rec=10.0,
         sample_length=16000,
-        noise_steps=1000,
+        noise_steps=250,
         n_val_epochs=1,
     ):
         super().__init__()
