@@ -1,5 +1,6 @@
 import torch
 from transformers import ClapModel, ClapProcessor
+import torchaudio
 
 
 class CLAPAudioEmbedding:
@@ -7,18 +8,24 @@ class CLAPAudioEmbedding:
         self.processor = ClapProcessor.from_pretrained(model_name)
         self.model = ClapModel.from_pretrained(model_name).to(device)
         self.device = device
+        self.target_sr = self.processor.sampling_rate
 
     @torch.no_grad()
-    def __call__(self, wav_16khz: torch.Tensor) -> torch.Tensor:
-        if wav_16khz.dim() == 3:
-            wav_16khz = wav_16khz.squeeze(1)
+    def __call__(self, wav16: torch.Tensor) -> torch.Tensor:
+        if wav16.dim() == 3:
+            wav16 = wav16.squeeze(1)
+        if self.target_sr != 16_000:
+            wav48 = torchaudio.functional.resample(
+                wav16, orig_freq=16_000, new_freq=self.target_sr
+            )
+        else:
+            wav48 = wav16
         inputs = self.processor(
-            audios=wav_16khz,
-            sampling_rate=16_000,
+            audios=wav48,
+            sampling_rate=self.target_sr,
             return_tensors="pt",
             padding=True,
         ).to(self.device)
-
         emb = self.model.get_audio_features(**inputs)
         return torch.nn.functional.normalize(emb, dim=-1)
 
