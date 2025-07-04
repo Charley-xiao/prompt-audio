@@ -2,6 +2,20 @@ import argparse, pytorch_lightning as pl, torch
 from model.pipeline import DiffusionVAEPipeline
 from datamodule.laion import LAIONAudioDataModule
 import torchaudio, os
+from pathlib import Path
+import glob
+
+def inference(model: DiffusionVAEPipeline, out_dir="samples"):
+    model.eval().cuda() if torch.cuda.is_available() else model.cpu()
+    wav = model.generate(["A melancholic piano solo"], num_steps=50).squeeze(0)
+    Path(out_dir).mkdir(exist_ok=True, parents=True)
+    path = Path(out_dir) / "demo.wav"
+    torchaudio.save(str(path), wav, 16_000)
+    print(f"Sample saved to {path.resolve()}")
+
+def latest_ckpt(ckpt_dir: str) -> str | None:
+    ckpts = glob.glob(os.path.join(ckpt_dir, "*.ckpt"))
+    return max(ckpts, key=os.path.getmtime) if ckpts else None
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
@@ -14,6 +28,9 @@ if __name__ == "__main__":
     p.add_argument("--data_files", type=str, default=None,
                    help="for debugging, specify a file or list of files to use")
     args = p.parse_args()
+
+    if args.data_files is not None:
+        print(f"IMPORTANT: Using data_files={args.data_files} will disable streaming mode.")
 
     dm = LAIONAudioDataModule(
         batch_size=args.batch_size,
@@ -41,10 +58,15 @@ if __name__ == "__main__":
         ]
     )
 
-    trainer.fit(model, dm)
-
-    wav = model.generate(["A melancholic piano solo"], num_steps=50)
-    wav = wav.squeeze(0)
-    os.makedirs("samples", exist_ok=True)
-    torchaudio.save("samples/demo.wav", wav, 16_000)
-    print("Sample saved to samples/demo.wav")
+    try:
+        trainer.fit(model, dm)
+        inference(model)
+    except KeyboardInterrupt:
+        print("\nCaught KeyboardInterrupt! Loading last checkpoint...")
+        last = latest_ckpt("checkpoints")
+        if last is None:
+            print("No checkpoint found, aborting.")
+            exit(1)
+        print(f"Resuming from {last}")
+        model = DiffusionVAEPipeline.load_from_checkpoint(last)
+        inference(model)
