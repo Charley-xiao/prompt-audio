@@ -48,7 +48,6 @@ class DiffusionVAEPipeline(pl.LightningModule):
             factor=0.5,
             patience=2,
             min_lr=1e-6,
-            verbose=True,
         )
 
         return {
