@@ -8,7 +8,7 @@ class CLAPAudioEmbedding:
         self.processor = ClapProcessor.from_pretrained(model_name)
         self.model = ClapModel.from_pretrained(model_name).to(device)
         self.device = device
-        self.target_sr = self.processor.sampling_rate
+        self.target_sr = 48_000  # CLAP expects 48kHz audio
 
     @torch.no_grad()
     def __call__(self, wav16: torch.Tensor) -> torch.Tensor:
