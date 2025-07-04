@@ -6,7 +6,7 @@ from model.clap_module import CLAPAudioEmbedding
 
 
 class FlowScheduler:
-    def __init__(self, num_train_timesteps=1000):
+    def __init__(self, num_train_timesteps=100):
         self.num_steps = num_train_timesteps
         self.timesteps = torch.linspace(0.0, 1.0, num_train_timesteps + 1)
 
