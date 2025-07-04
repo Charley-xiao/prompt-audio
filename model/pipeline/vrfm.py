@@ -115,7 +115,7 @@ class VRFMVAEPipeline(pl.LightningModule):
 
     def validation_step(self, batch, _):
         wav_gt, prompts = batch
-        wav_gen = self.generate(prompts, num_steps=100)
+        wav_gen = self.generate(prompts, num_steps=50)
         self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
         a_emb = self.clap(wav_gen)
         t_emb = self.clap.text_embed(prompts)

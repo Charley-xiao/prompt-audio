@@ -6,7 +6,7 @@ from model.clap_module import CLAPAudioEmbedding
 
 
 class FlowScheduler:
-    def __init__(self, num_train_timesteps=100):
+    def __init__(self, num_train_timesteps=50):
         self.num_steps = num_train_timesteps
         self.timesteps = torch.linspace(0.0, 1.0, num_train_timesteps + 1)
 
@@ -95,7 +95,7 @@ class FlowVAEPipeline(pl.LightningModule):
 
     def validation_step(self, batch, _):
         wav_gt, prompts = batch
-        wav_gen = self.generate(prompts, num_steps=100)
+        wav_gen = self.generate(prompts, num_steps=50)
         self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
         a_emb = self.clap(wav_gen)
         t_emb = self.clap.text_embed(prompts)
