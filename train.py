@@ -52,9 +52,12 @@ if __name__ == "__main__":
         callbacks=[
             pl.callbacks.ModelCheckpoint(
                 dirpath="checkpoints",
-                filename="model-{epoch:02d}-{step}",
-                save_top_k=-1,
-                every_n_train_steps=1000
+                filename="model-{epoch:02d}-{val_FAD:.4f}",
+                monitor="val_FAD",
+                mode="min",
+                save_top_k=3,
+                save_last=True,
+                every_n_epochs=1,
             )
         ]
     )

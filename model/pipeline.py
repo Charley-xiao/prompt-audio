@@ -17,7 +17,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         beta_rec=10.0,
         sample_length=16000,
         noise_steps=1000,
-        n_val_epochs=2
+        n_val_epochs=1
     ):
         super().__init__()
         self.save_hyperparameters()
