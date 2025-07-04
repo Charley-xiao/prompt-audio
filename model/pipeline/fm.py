@@ -112,7 +112,7 @@ class FlowVAEPipeline(pl.LightningModule):
         self.clap_sim.reset()
 
     @torch.no_grad()
-    def generate(self, prompts: list[str], num_steps: int | None = None):
+    def generate(self, prompts: list[str], num_steps: int | None = 100):
         self.eval()
         device = self.device
         cond = self.textenc(prompts, device=device)
