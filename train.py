@@ -48,6 +48,7 @@ if __name__ == "__main__":
         max_epochs=args.epochs,
         precision=32,
         log_every_n_steps=10,
+        val_check_interval=1.0,
         callbacks=[
             pl.callbacks.ModelCheckpoint(
                 dirpath="checkpoints",

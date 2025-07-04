@@ -1,69 +1,21 @@
 import random, torch, torchaudio
 import torch.nn.functional as F
 from datasets import load_dataset, Audio
-from torch.utils.data import IterableDataset, DataLoader
+from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
 
-class LAIONAudioIterable(IterableDataset):
-    def __init__(
-        self,
-        split: str = "train",
-        sample_rate: int = 16_000,
-        segment_ms: int = 1_000,
-        laion_path: str = "laion/LAION-Audio-300M",
-        max_rows: int | None = None, # reserved for debugging
-        data_files: str | list[str] | None = None, # reserved for debugging
-    ):
-        super().__init__()
-        self.seglen = sample_rate * segment_ms // 1000
-        if data_files is None:
-            ds = load_dataset(laion_path, split=split, streaming=True)
-        else:
-            ds = load_dataset(
-                laion_path, split=split, streaming=True, data_files=data_files
-            )
-        ds = ds.cast_column("audio.mp3", Audio(sampling_rate=sample_rate))
-        self.ds = ds if max_rows is None else ds.take(max_rows)
 
-    def __iter__(self):
-        for ex in self.ds:
-            wav = ex["audio.mp3"]["array"]
-            if wav.ndim == 1:
-                wav = wav[None, :]
-            L = wav.shape[-1]
-            if L >= self.seglen:
-                start = random.randint(0, L - self.seglen)
-                wav = wav[:, start : start + self.seglen]
-            else:
-                pad = self.seglen - L
-                wav = F.pad(torch.from_numpy(wav), (0, pad)).numpy()
-            caption = ex["metadata.json"]["caption"]
-            yield torch.from_numpy(wav).float(), caption
-
-
-class LAIONAudioDataset(torch.utils.data.Dataset):
-    """Map-style dataset"""
-    def __init__(
-        self,
-        split: str = "train",
-        sample_rate: int = 16_000,
-        segment_ms: int = 1_000,
-        laion_path: str = "laion/LAION-Audio-300M",
-        max_rows: int | None = None,
-        data_files: str | list[str] | None = None,
-    ):
-        self.seglen = sample_rate * segment_ms // 1000
-        ds = load_dataset(laion_path, split=split, streaming=False, data_files=data_files)
-        ds = ds.cast_column("audio.mp3", Audio(sampling_rate=sample_rate))
-        if max_rows is not None:
-            ds = ds.select(range(max_rows))
-        self.ds = ds
+class LAIONClipDataset(Dataset):
+    def __init__(self, hf_ds, segment_len, sample_rate):
+        self.ds = hf_ds
+        self.seglen = segment_len
+        self.sr = sample_rate
 
     def __len__(self):
         return len(self.ds)
 
     def __getitem__(self, idx):
-        ex  = self.ds[idx]
+        ex = self.ds[idx]
         wav = ex["audio.mp3"]["array"]
         if wav.ndim == 1:
             wav = wav[None, :]
@@ -83,27 +35,63 @@ class LAIONAudioDataModule(pl.LightningDataModule):
         self,
         batch_size: int = 32,
         num_workers: int = 4,
-        **kwargs,
+        sample_rate: int = 16_000,
+        segment_ms: int = 1_000,
+        val_pct: float = 0.02,
+        laion_path: str = "laion/LAION-Audio-300M",
+        split: str = "train",
+        max_rows: int | None = None,
+        data_files: str | list[str] | None = None,
     ):
         super().__init__()
-        self.bs, self.nw, self.kw = batch_size, num_workers, kwargs
+        self.bs, self.nw = batch_size, num_workers
+        self.sr = sample_rate
+        self.seglen = sample_rate * segment_ms // 1000
+        self.val_pct = val_pct
+        self.hf_kwargs = dict(
+            path = laion_path,
+            split = split,
+            streaming = False,
+            data_files = data_files,
+        )
+        self.max_rows = max_rows
 
     @staticmethod
-    def _collate(b):
-        wavs, caps = zip(*b)
+    def _collate(batch):
+        wavs, caps = zip(*batch)
         return torch.stack(wavs), list(caps)
 
+    def setup(self, stage: str | None = None):
+        if stage not in (None, "fit"):
+            return
+
+        ds = load_dataset(**self.hf_kwargs)
+        ds = ds.cast_column("audio.mp3", Audio(sampling_rate=self.sr))
+        if self.max_rows is not None:
+            ds = ds.select(range(self.max_rows))
+
+        split_ds = ds.train_test_split(test_size=self.val_pct, seed=42, shuffle=True)
+        train_hf, val_hf = split_ds["train"], split_ds["test"]
+
+        self.train_ds = LAIONClipDataset(train_hf, self.seglen, self.sr)
+        self.val_ds = LAIONClipDataset(val_hf,   self.seglen, self.sr)
+
     def train_dataloader(self):
-        if self.kw.get("data_files") is not None:
-            print("Disabling streaming mode due to data_files argument.")
-            ds = LAIONAudioDataset(**self.kw)
-            return DataLoader(
-                ds, batch_size=self.bs, num_workers=self.nw,
-                collate_fn=self._collate, pin_memory=True, shuffle=True
-            )
-        else:
-            ds = LAIONAudioIterable(**self.kw)
-            return DataLoader(
-                ds, batch_size=self.bs, num_workers=self.nw,
-                collate_fn=self._collate, pin_memory=True
-            )
+        return DataLoader(
+            self.train_ds,
+            batch_size=self.bs,
+            shuffle=True,
+            num_workers=self.nw,
+            pin_memory=True,
+            collate_fn=self._collate,
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.val_ds,
+            batch_size=self.bs,
+            shuffle=False,
+            num_workers=self.nw,
+            pin_memory=True,
+            collate_fn=self._collate,
+        )

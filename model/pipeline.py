@@ -3,6 +3,9 @@ import pytorch_lightning as pl
 import torch.nn.functional as F
 from model.backbone import AudioEncoder, AudioDecoder, PromptEncoder, CondUNet
 from diffusers import DDPMScheduler
+from torcheval.metrics import FrechetAudioDistance
+from torchmetrics.aggregation import MeanMetric
+from model.clap_module import CLAPAudioEmbedding
 
 
 class DiffusionVAEPipeline(pl.LightningModule):
@@ -13,7 +16,8 @@ class DiffusionVAEPipeline(pl.LightningModule):
         beta_kl=0.001,
         beta_rec=10.0,
         sample_length=16000,
-        noise_steps=1000
+        noise_steps=1000,
+        n_val_epochs=2
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -25,13 +29,37 @@ class DiffusionVAEPipeline(pl.LightningModule):
         self.unet = CondUNet(latent_ch, cond_dim=128, latent_steps=latent_steps)
         self.scheduler = DDPMScheduler(num_train_timesteps=noise_steps)
 
+        self.fad = FrechetAudioDistance.with_vggish(device=self.device)
+        self.clap = CLAPAudioEmbedding(device=self.device)
+        self.clap_sim = MeanMetric()
+        self.val_interval = n_val_epochs
+
     @staticmethod
     def reparameterize(mu, logvar):
         std, eps = (0.5 * logvar).exp(), torch.randn_like(mu)
         return mu + std * eps
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=self.hparams.lr)
+        # return torch.optim.AdamW(self.parameters(), lr=self.hparams.lr)
+        opt = torch.optim.AdamW(self.parameters(), lr=self.hparams.lr)
+        sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            opt,
+            mode="min",
+            factor=0.5,
+            patience=2,
+            min_lr=1e-6,
+            verbose=True,
+        )
+
+        return {
+            "optimizer": opt,
+            "lr_scheduler": {
+                "scheduler": sched,
+                "monitor":   "val_FAD",
+                "frequency": 1,
+                "interval":  "epoch",
+            },
+        }
 
     def forward(self, wav, prompt):
         mu, logvar = self.encoder(wav)
@@ -69,6 +97,26 @@ class DiffusionVAEPipeline(pl.LightningModule):
             {"loss": loss, "L_diff": loss_diff, "L_KL": kld, "L_rec": rec},
             prog_bar=True)
         return loss
+    
+    def validation_step(self, batch, batch_idx):
+        wav_gt, prompt = batch
+        wav_gen = self.generate(prompt, num_steps=50)
+        self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
+
+        a_emb = self.clap(wav_gen)
+        t_emb = self.clap.text_embed(prompt)
+        sim = F.cosine_similarity(a_emb, t_emb)
+        self.clap_sim.update(sim)
+
+    def on_validation_epoch_end(self):
+        if (self.current_epoch + 1) % self.val_interval:
+            return
+        fad_value = self.fad.compute()
+        self.log("val_FAD", fad_value, prog_bar=True, sync_dist=True)
+        self.fad.reset()
+        score = self.clap_sim.compute()
+        self.log("val_CLAPSim", score, prog_bar=True, sync_dist=True)
+        self.clap_sim.reset()
 
     @torch.no_grad()
     def generate(self, prompts: list[str], num_steps: int = 50):
