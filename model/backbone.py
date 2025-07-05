@@ -81,6 +81,7 @@ class PromptEncoderv2(nn.Module):
         self.proj = nn.Linear(enc_dim, proj_dim, bias=False) \
                     if proj_dim != enc_dim else nn.Identity()
         if not trainable:
+            self.encoder.eval()
             for p in self.encoder.parameters():
                 p.requires_grad_(False)
 

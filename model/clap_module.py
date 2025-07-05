@@ -4,9 +4,10 @@ import torchaudio
 
 
 class CLAPAudioEmbedding:
-    def __init__(self, model_name="laion/clap-htsat-fused", device="cpu"):
+    def __init__(self, model_name="laion/clap-htsat-fused", device="cuda"):
         self.processor = ClapProcessor.from_pretrained(model_name)
         self.model = ClapModel.from_pretrained(model_name).to(device)
+        print(f"CLAP model loaded: {model_name} on {device}")
         self.device = device
         self.target_sr = 48_000  # CLAP expects 48kHz audio
 
