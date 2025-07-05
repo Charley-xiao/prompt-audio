@@ -1,4 +1,5 @@
 import argparse, pytorch_lightning as pl, torch
+from lightning.pytorch.profilers import SimpleProfiler
 from model.pipeline.diffusion import DiffusionVAEPipeline
 from model.pipeline.fm import FlowVAEPipeline
 from model.pipeline.vrfm import VRFMVAEPipeline
@@ -73,7 +74,10 @@ if __name__ == "__main__":
                 every_n_epochs=1,
             )
         ],
-        profiler="simple",
+        profiler=SimpleProfiler(
+            dirpath="profile",
+            filename=f"profiler-{args.model}.txt",
+        )
     )
 
     try:
