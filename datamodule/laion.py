@@ -16,7 +16,8 @@ class LAIONClipDataset(Dataset):
 
     def __getitem__(self, idx):
         ex = self.ds[idx]
-        wav = ex["audio.mp3"]["array"]
+        wav = ex["audio.mp3"]["array"].astype("float32")
+        wav = torch.from_numpy(wav)
         if wav.ndim == 1:
             wav = wav[None, :]
         L = wav.shape[-1]
@@ -27,7 +28,11 @@ class LAIONClipDataset(Dataset):
             pad = self.seglen - L
             wav = F.pad(torch.from_numpy(wav), (0, pad)).numpy()
         caption = ex["metadata.json"]["caption"]
-        return torch.from_numpy(wav).float(), caption
+        peak = wav.abs().max()
+        if peak > 1:
+            wav = wav / peak
+        wav = wav.clamp_(-1.0, 1.0)
+        return wav, caption
 
 
 class LAIONAudioDataModule(pl.LightningDataModule):

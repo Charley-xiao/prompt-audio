@@ -1,7 +1,7 @@
 import torch
 import pytorch_lightning as pl
 import torch.nn.functional as F
-from model.backbone import AudioEncoder, AudioDecoder, PromptEncoder, CondUNet
+from model.backbone import AudioEncoder, AudioDecoder, PromptEncoder, CondUNet, PromptEncoderv2
 from diffusers import DDPMScheduler
 from torcheval.metrics import FrechetAudioDistance
 from torchmetrics.aggregation import MeanMetric
@@ -11,7 +11,7 @@ from model.clap_module import CLAPAudioEmbedding
 class DiffusionVAEPipeline(pl.LightningModule):
     def __init__(
         self,
-        latent_ch=32,
+        latent_ch=64,
         lr=2e-4,
         beta_kl=0.001,
         beta_rec=10.0,
@@ -24,7 +24,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
 
         self.encoder = AudioEncoder(latent_ch)
         self.decoder = AudioDecoder(latent_ch, target_len=sample_length)
-        self.textenc = PromptEncoder(proj_dim=128)
+        self.textenc = PromptEncoderv2(proj_dim=128)
         latent_steps = sample_length // 8
         self.unet = CondUNet(latent_ch, cond_dim=128, latent_steps=latent_steps)
         self.scheduler = DDPMScheduler(num_train_timesteps=noise_steps)
@@ -68,8 +68,6 @@ class DiffusionVAEPipeline(pl.LightningModule):
 
     def training_step(self, batch, _):
         wav, prompt = batch
-        assert wav.min() >= -1.0 and wav.max() <= 1.0, \
-            f"Input audio must be normalized to [-1, 1] range. Got min: {wav.min()}, max: {wav.max()}."
         z, mu, logvar, prompt_e = self(wav, prompt)
 
         # print(f"Batch size: {wav.size(0)}, Latent shape: {z.shape}, Prompt shape: {prompt_e.shape}")
@@ -77,7 +75,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         # Noise scheduling
         bsz = z.size(0)
         t = torch.randint(
-            0, self.scheduler.num_train_timesteps,
+            0, self.scheduler.config.num_train_timesteps,
             (bsz,), device=self.device, dtype=torch.long
         )
         # print(f"Time steps: {t}, shape: {t.shape}")

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from transformers import T5Tokenizer, T5EncoderModel
+from transformers import T5Tokenizer, T5EncoderModel, AutoModel, AutoTokenizer
 from diffusers import UNet2DConditionModel
 
 
@@ -54,6 +54,43 @@ class PromptEncoder(nn.Module):
         pooled = hid.mean(dim=1)
         return self.proj(pooled)
     
+MODEL_PRESETS = {
+    "mini":  "sentence-transformers/all-MiniLM-L6-v2",
+    "base":  "sentence-transformers/paraphrase-MiniLM-L12-v2",
+    "clip":  "openai/clip-vit-base-patch32",
+}
+
+class PromptEncoderv2(nn.Module):
+    """
+    Small & fast sentence encoder with mean-pooling.
+    Args
+    ----
+    preset      : "mini" | "base" | "clip" | HF model_id
+    proj_dim    : int, projection dimension (default: 256)
+    trainable   : bool, whether to train the text encoder (default: True)
+    """
+    def __init__(self, preset="mini", proj_dim=256, trainable=True):
+        super().__init__()
+        model_name = MODEL_PRESETS.get(preset, preset)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.encoder   = AutoModel.from_pretrained(model_name)
+        enc_dim = self.encoder.config.hidden_size
+        self.proj = nn.Linear(enc_dim, proj_dim, bias=False) \
+                    if proj_dim != enc_dim else nn.Identity()
+        if not trainable:
+            for p in self.encoder.parameters():
+                p.requires_grad_(False)
+
+    def forward(self, prompts: list[str], device):
+        tok = self.tokenizer(
+            prompts, padding=True, truncation=True,
+            max_length=64, return_tensors="pt"
+        ).to(device)
+
+        out = self.encoder(**tok, output_hidden_states=False)
+        emb = out.last_hidden_state.mean(dim=1)
+        return self.proj(emb)
+
 
 class CondUNet(nn.Module):
     def __init__(

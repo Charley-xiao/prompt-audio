@@ -48,7 +48,7 @@ if __name__ == "__main__":
 
     sample_len = args.segment_ms * 16  # 16 kHz
     if args.model == "diffusion":
-        model = DiffusionVAEPipeline(latent_ch=32, sample_length=sample_len)
+        model = DiffusionVAEPipeline(latent_ch=64, sample_length=sample_len)
     elif args.model == "flow":
         model = FlowVAEPipeline(latent_ch=32, sample_length=sample_len)
     elif args.model == "vrfm":
