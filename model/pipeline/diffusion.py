@@ -106,7 +106,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
     
     def validation_step(self, batch, batch_idx):
         wav_gt, prompt = batch
-        wav_gen = self.generate(prompt, num_steps=250).to(self.device)
+        wav_gen = self.generate(prompt, num_steps=250, to_cpu=False)
         self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
 
         a_emb = self.clap(wav_gen)
@@ -135,7 +135,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
                         v[kk] = vv.to(device)
 
     @torch.no_grad()
-    def generate(self, prompts: list[str], num_steps: int = 50):
+    def generate(self, prompts: list[str], num_steps: int = 50, to_cpu: bool = True):
         self.eval()
         device = self.device
         cond = self.textenc(prompts, device=device)
@@ -150,4 +150,4 @@ class DiffusionVAEPipeline(pl.LightningModule):
             noise_pred = self.unet(lat, t, cond)
             lat = self.scheduler.step(noise_pred, t, lat).prev_sample
         wav = self.decoder(lat)
-        return wav.cpu()
+        return wav.cpu() if to_cpu else wav
