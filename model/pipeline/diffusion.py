@@ -6,6 +6,15 @@ from diffusers import DDPMScheduler, DDIMScheduler
 from torcheval.metrics import FrechetAudioDistance
 from torchmetrics.aggregation import MeanMetric
 from model.clap_module import CLAPAudioEmbedding
+import contextlib, time
+from pytorch_lightning.utilities import rank_zero_only
+
+
+@contextlib.contextmanager
+def _timer(name, times_dict):
+    start = time.time()
+    yield
+    times_dict[name] = time.time() - start
 
 
 class DiffusionVAEPipeline(pl.LightningModule):
@@ -105,14 +114,29 @@ class DiffusionVAEPipeline(pl.LightningModule):
         return loss
     
     def validation_step(self, batch, batch_idx):
-        wav_gt, prompt = batch
-        wav_gen = self.generate(prompt, num_steps=250, to_cpu=False)
-        self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
+        wav_gt, prompts = batch
+        times = {}
+        with _timer("gen", times):
+            wav_gen = self.generate(prompts, num_steps=250, to_cpu=False)
+        with _timer("fad", times):
+            self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
+        with _timer("clap", times):
+            a_emb = self.clap(wav_gen)
+            t_emb = self.clap.text_embed(prompts)
+            sim   = F.cosine_similarity(a_emb, t_emb)
+            self.clap_sim.update(sim)
+        if batch_idx == 0:
+            self._log_times(times)
 
-        a_emb = self.clap(wav_gen)
-        t_emb = self.clap.text_embed(prompt)
-        sim = F.cosine_similarity(a_emb, t_emb)
-        self.clap_sim.update(sim)
+    @rank_zero_only
+    def _log_times(self, times):
+        print(
+            f"┌─ Validation timings\n"
+            f"│  Generation : {times['gen'] :.2f} s\n"
+            f"│  FAD update : {times['fad'] :.2f} s\n"
+            f"│  CLAP sim   : {times['clap']:.2f} s\n"
+            f"└─────────────────────"
+        )
 
     def on_validation_epoch_end(self):
         if (self.current_epoch + 1) % self.val_interval:
