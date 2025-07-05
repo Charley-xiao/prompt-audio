@@ -37,10 +37,15 @@ class DiffusionVAEPipeline(pl.LightningModule):
                 clip_sample=False,
             )
 
-        self.fad = FrechetAudioDistance.with_vggish(device=self.device)
-        self.clap = CLAPAudioEmbedding(device=self.device)
+        self.fad = None
+        self.clap = None
         self.clap_sim = MeanMetric()
         self.val_interval = n_val_epochs
+
+    def setup(self, stage=None):
+        if self.fad is None:
+            self.fad  = FrechetAudioDistance.with_vggish(device=self.device)
+            self.clap = CLAPAudioEmbedding(device=self.device)
 
     @staticmethod
     def reparameterize(mu, logvar):
