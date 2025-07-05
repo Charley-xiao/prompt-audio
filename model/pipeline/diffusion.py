@@ -43,6 +43,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         self.val_interval = n_val_epochs
 
     def setup(self, stage=None):
+        self.scheduler_to_device(self.device)
         if self.fad is None:
             self.fad  = FrechetAudioDistance.with_vggish(device=self.device)
             self.clap = CLAPAudioEmbedding(device=self.device)
@@ -105,7 +106,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
     
     def validation_step(self, batch, batch_idx):
         wav_gt, prompt = batch
-        wav_gen = self.generate(prompt, num_steps=250)
+        wav_gen = self.generate(prompt, num_steps=250).to(self.device)
         self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
 
         a_emb = self.clap(wav_gen)
@@ -123,19 +124,20 @@ class DiffusionVAEPipeline(pl.LightningModule):
         self.log("val_CLAPSim", score, prog_bar=True, sync_dist=True)
         self.clap_sim.reset()
 
+    def scheduler_to_device(self, device):
+        sched = self.scheduler
+        for k, v in sched.__dict__.items():
+            if torch.is_tensor(v):
+                setattr(sched, k, v.to(device))
+            elif isinstance(v, dict):
+                for kk, vv in v.items():
+                    if torch.is_tensor(vv):
+                        v[kk] = vv.to(device)
+
     @torch.no_grad()
     def generate(self, prompts: list[str], num_steps: int = 50):
-        def _scheduler_to_device(sched, device):
-            for k, v in sched.__dict__.items():
-                if torch.is_tensor(v):
-                    setattr(sched, k, v.to(device))
-                elif isinstance(v, dict):
-                    for kk, vv in v.items():
-                        if torch.is_tensor(vv):
-                            v[kk] = vv.to(device)
         self.eval()
         device = self.device
-        _scheduler_to_device(self.scheduler, device)
         cond = self.textenc(prompts, device=device)
         lat = torch.randn(
             cond.size(0),
