@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from transformers import T5Tokenizer, T5EncoderModel, AutoModel, AutoTokenizer
 from diffusers import UNet2DConditionModel
+import torch.nn.functional as F
 
 
 class AudioEncoder(nn.Module):
@@ -54,6 +55,7 @@ class PromptEncoder(nn.Module):
         pooled = hid.mean(dim=1)
         return self.proj(pooled)
     
+
 MODEL_PRESETS = {
     "mini":  "sentence-transformers/all-MiniLM-L6-v2",
     "base":  "sentence-transformers/paraphrase-MiniLM-L12-v2",
@@ -63,6 +65,7 @@ MODEL_PRESETS = {
 class PromptEncoderv2(nn.Module):
     """
     Small & fast sentence encoder with mean-pooling.
+    ----
     Args
     ----
     preset      : "mini" | "base" | "clip" | HF model_id
@@ -81,14 +84,20 @@ class PromptEncoderv2(nn.Module):
             for p in self.encoder.parameters():
                 p.requires_grad_(False)
 
+    @staticmethod
+    def mean_pooling(model_output, attention_mask):
+        token_embeddings = model_output[0]
+        input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+        return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+
     def forward(self, prompts: list[str], device):
         tok = self.tokenizer(
-            prompts, padding=True, truncation=True,
-            max_length=64, return_tensors="pt"
+            prompts, padding=True, truncation=True, return_tensors="pt"
         ).to(device)
 
-        out = self.encoder(**tok, output_hidden_states=False)
-        emb = out.last_hidden_state.mean(dim=1)
+        out = self.encoder(**tok)
+        emb = self.mean_pooling(out, tok['attention_mask'])
+        emb = F.normalize(emb, p=2, dim=1)
         return self.proj(emb)
 
 

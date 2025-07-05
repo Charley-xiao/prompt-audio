@@ -2,7 +2,7 @@ import torch
 import pytorch_lightning as pl
 import torch.nn.functional as F
 from model.backbone import AudioEncoder, AudioDecoder, PromptEncoder, CondUNet, PromptEncoderv2
-from diffusers import DDPMScheduler
+from diffusers import DDPMScheduler, DDIMScheduler
 from torcheval.metrics import FrechetAudioDistance
 from torchmetrics.aggregation import MeanMetric
 from model.clap_module import CLAPAudioEmbedding
@@ -17,17 +17,25 @@ class DiffusionVAEPipeline(pl.LightningModule):
         beta_rec=10.0,
         sample_length=16000,
         noise_steps=1000,
-        n_val_epochs=1
+        n_val_epochs=1,
+        scheduler_type="ddpm",
     ):
         super().__init__()
         self.save_hyperparameters()
 
         self.encoder = AudioEncoder(latent_ch)
         self.decoder = AudioDecoder(latent_ch, target_len=sample_length)
-        self.textenc = PromptEncoderv2(proj_dim=128)
+        self.textenc = PromptEncoderv2(proj_dim=128, preset="mini", trainable=False)
         latent_steps = sample_length // 8
         self.unet = CondUNet(latent_ch, cond_dim=128, latent_steps=latent_steps)
-        self.scheduler = DDPMScheduler(num_train_timesteps=noise_steps)
+        if scheduler_type == "ddpm":
+            self.scheduler = DDPMScheduler(num_train_timesteps=noise_steps)
+        elif scheduler_type == "ddim":
+            self.scheduler = DDIMScheduler(
+                num_train_timesteps=noise_steps,
+                beta_schedule="squaredcos_cap_v2",
+                clip_sample=False,
+            )
 
         self.fad = FrechetAudioDistance.with_vggish(device=self.device)
         self.clap = CLAPAudioEmbedding(device=self.device)
@@ -70,24 +78,17 @@ class DiffusionVAEPipeline(pl.LightningModule):
         wav, prompt = batch
         z, mu, logvar, prompt_e = self(wav, prompt)
 
-        # print(f"Batch size: {wav.size(0)}, Latent shape: {z.shape}, Prompt shape: {prompt_e.shape}")
-
-        # Noise scheduling
         bsz = z.size(0)
         t = torch.randint(
             0, self.scheduler.config.num_train_timesteps,
             (bsz,), device=self.device, dtype=torch.long
         )
-        # print(f"Time steps: {t}, shape: {t.shape}")
         noise  = torch.randn_like(z)
         noisy_z = self.scheduler.add_noise(z, noise, t)
-        # print(f"Noisy latent shape: {noisy_z.shape}, Noise shape: {noise.shape}")
 
-        # Predict noise
         noise_pred = self.unet(noisy_z, t, prompt_e)
         loss_diff  = F.mse_loss(noise_pred, noise)
 
-        # VAE loss
         kld = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
         rec = F.l1_loss(self.decoder(z), wav)
 
@@ -99,7 +100,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
     
     def validation_step(self, batch, batch_idx):
         wav_gt, prompt = batch
-        wav_gen = self.generate(prompt, num_steps=50)
+        wav_gen = self.generate(prompt, num_steps=250)
         self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
 
         a_emb = self.clap(wav_gen)

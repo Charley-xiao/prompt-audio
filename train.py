@@ -48,7 +48,7 @@ if __name__ == "__main__":
 
     sample_len = args.segment_ms * 16  # 16 kHz
     if args.model == "diffusion":
-        model = DiffusionVAEPipeline(latent_ch=64, sample_length=sample_len)
+        model = DiffusionVAEPipeline(latent_ch=64, sample_length=sample_len, scheduler_type="ddim")
     elif args.model == "flow":
         model = FlowVAEPipeline(latent_ch=32, sample_length=sample_len)
     elif args.model == "vrfm":
@@ -63,15 +63,17 @@ if __name__ == "__main__":
         val_check_interval=1.0,
         callbacks=[
             pl.callbacks.ModelCheckpoint(
-                dirpath="checkpoints",
-                filename=f"{args.model}-model-{{epoch:02d}}-{{val_FAD:.4f}}",
+                dirpath=f"checkpoints/{args.model}",
+                filename=f"model-{{epoch:02d}}-{{val_FAD:.4f}}",
                 monitor="val_FAD",
                 mode="min",
                 save_top_k=3,
                 save_last=True,
                 every_n_epochs=1,
             )
-        ]
+        ],
+        profiler="simple",
+        auto_lr_find=True,
     )
 
     try:
