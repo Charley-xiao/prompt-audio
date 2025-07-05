@@ -68,6 +68,8 @@ class DiffusionVAEPipeline(pl.LightningModule):
 
     def training_step(self, batch, _):
         wav, prompt = batch
+        assert wav.min() >= -1.0 and wav.max() <= 1.0, \
+            f"Input audio must be normalized to [-1, 1] range. Got min: {wav.min()}, max: {wav.max()}."
         z, mu, logvar, prompt_e = self(wav, prompt)
 
         # print(f"Batch size: {wav.size(0)}, Latent shape: {z.shape}, Prompt shape: {prompt_e.shape}")

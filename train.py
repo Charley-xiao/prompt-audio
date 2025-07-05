@@ -11,7 +11,7 @@ INFERENCE_PROMPT = "A melancholic piano melody plays, characterized by a slow te
 
 def inference(model: DiffusionVAEPipeline | FlowVAEPipeline | VRFMVAEPipeline, out_dir="samples"):
     model.eval().cuda() if torch.cuda.is_available() else model.cpu()
-    wav = model.generate([INFERENCE_PROMPT], num_steps=100).squeeze(0)
+    wav = model.generate([INFERENCE_PROMPT], num_steps=500).squeeze(0)
     Path(out_dir).mkdir(exist_ok=True, parents=True)
     path = Path(out_dir) / "demo.wav"
     torchaudio.save(str(path), wav, 16_000)
