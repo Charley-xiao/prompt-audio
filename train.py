@@ -73,7 +73,6 @@ if __name__ == "__main__":
             )
         ],
         profiler="simple",
-        auto_lr_find=True,
     )
 
     try:
