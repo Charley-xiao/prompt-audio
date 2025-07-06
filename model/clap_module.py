@@ -21,7 +21,7 @@ class CLAPAudioEmbedding:
             )
         else:
             wav48 = wav16.cpu().float()
-        audio_list = [w.numpy() for w in wav48]
+        audio_list = [w.detach().cpu().float().numpy() for w in wav48]
         inputs = self.processor(
             audios=audio_list,
             sampling_rate=self.target_sr,
