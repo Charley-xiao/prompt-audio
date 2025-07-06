@@ -131,6 +131,7 @@ class CondUNet(nn.Module):
             ),
         )
         self.unet.enable_xformers_memory_efficient_attention()
+        self.unet = torch.compile(self.unet, mode="reduce-overhead")
 
     def forward(self, noisy_lat, timesteps, prompt_embed):
         h = noisy_lat.unsqueeze(-1)
