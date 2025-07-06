@@ -54,6 +54,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
 
     def setup(self, stage=None):
         self.scheduler_to_device(self.device)
+        torch.backends.cudnn.benchmark = True
         if self.fad is None:
             self.fad  = FrechetAudioDistance.with_vggish(device="cpu").to(self.device)
             self.clap = CLAPAudioEmbedding(device=self.device)
