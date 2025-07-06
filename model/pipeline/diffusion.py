@@ -74,7 +74,6 @@ class DiffusionVAEPipeline(pl.LightningModule):
             patience=2,
             min_lr=1e-6,
         )
-
         return {
             "optimizer": opt,
             "lr_scheduler": {
@@ -94,7 +93,6 @@ class DiffusionVAEPipeline(pl.LightningModule):
     def training_step(self, batch, _):
         wav, prompt = batch
         z, mu, logvar, prompt_e = self(wav, prompt)
-
         bsz = z.size(0)
         t = torch.randint(
             0, self.scheduler.config.num_train_timesteps,
@@ -102,13 +100,10 @@ class DiffusionVAEPipeline(pl.LightningModule):
         )
         noise  = torch.randn_like(z)
         noisy_z = self.scheduler.add_noise(z, noise, t)
-
         noise_pred = self.unet(noisy_z, t, prompt_e)
         loss_diff  = F.mse_loss(noise_pred, noise)
-
         kld = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
         rec = F.l1_loss(self.decoder(z), wav)
-
         loss = loss_diff + self.hparams.beta_kl * kld + self.hparams.beta_rec * rec
         self.log_dict(
             {"loss": loss, "L_diff": loss_diff, "L_KL": kld, "L_rec": rec},
