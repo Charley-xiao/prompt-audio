@@ -8,6 +8,7 @@ from torchmetrics.aggregation import MeanMetric
 from model.clap_module import CLAPAudioEmbedding
 import contextlib, time
 from pytorch_lightning.utilities import rank_zero_only
+from functools import lru_cache
 
 
 @contextlib.contextmanager
@@ -117,7 +118,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         wav_gt, prompts = batch
         times = {}
         with _timer("gen", times):
-            wav_gen = self.generate(prompts, num_steps=250, to_cpu=False)
+            wav_gen = self.generate(prompts, num_steps=100, to_cpu=False)
         with _timer("fad", times):
             self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
         with _timer("clap", times):
@@ -158,11 +159,15 @@ class DiffusionVAEPipeline(pl.LightningModule):
                     if torch.is_tensor(vv):
                         v[kk] = vv.to(device)
 
+    @lru_cache(maxsize=2048)
+    def _cached_text(self, txt: str):
+        return self.textenc([txt], device=self.device)
+
     @torch.no_grad()
     def generate(self, prompts: list[str], num_steps: int = 50, to_cpu: bool = True):
         self.eval()
         device = self.device
-        cond = self.textenc(prompts, device=device)
+        cond = torch.cat([self._cached_text(t) for t in prompts], dim=0)
         lat = torch.randn(
             cond.size(0),
             self.hparams.latent_ch,

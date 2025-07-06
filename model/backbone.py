@@ -3,6 +3,7 @@ import torch.nn as nn
 from transformers import T5Tokenizer, T5EncoderModel, AutoModel, AutoTokenizer
 from diffusers import UNet2DConditionModel
 import torch.nn.functional as F
+import xformers
 
 
 class AudioEncoder(nn.Module):
@@ -128,7 +129,8 @@ class CondUNet(nn.Module):
             up_block_types = (
                 "UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",
             ),
-        )
+        ).enable_xformers_memory_efficient_attention()
+        self.unet = torch.compile(self.unet, mode="reduce-overhead")
 
     def forward(self, noisy_lat, timesteps, prompt_embed):
         h = noisy_lat.unsqueeze(-1)
