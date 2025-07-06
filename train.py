@@ -36,10 +36,9 @@ if __name__ == "__main__":
     p.add_argument("--model", type=str, default="diffusion",
                    choices=["diffusion", "flow", "vrfm"],
                    help="Choose the model type: 'diffusion', 'flow' or 'vrfm'")
+    p.add_argument("--ckpt_dir", type=str, default="checkpoints",
+                   help="Directory to save model checkpoints")
     args = p.parse_args()
-
-    if args.data_files is not None:
-        print(f"IMPORTANT: Using data_files={args.data_files} will disable streaming mode.")
 
     dm = LAIONAudioDataModule(
         batch_size=args.batch_size,
@@ -65,7 +64,7 @@ if __name__ == "__main__":
         val_check_interval=1.0,
         callbacks=[
             pl.callbacks.ModelCheckpoint(
-                dirpath=f"checkpoints/{args.model}",
+                dirpath=f"{args.ckpt_dir}/{args.model}",
                 filename=f"model-{{epoch:02d}}-{{val_FAD:.4f}}",
                 monitor="val_FAD",
                 mode="min",
@@ -85,7 +84,7 @@ if __name__ == "__main__":
         inference(model)
     except KeyboardInterrupt:
         print("\nCaught KeyboardInterrupt! Loading last checkpoint...")
-        last = latest_ckpt("checkpoints")
+        last = latest_ckpt(f"{args.ckpt_dir}/{args.model}")
         if last is None:
             print("No checkpoint found, aborting.")
             exit(1)

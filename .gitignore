@@ -5,3 +5,4 @@ samples/
 lightning_logs/
 checkpoints/
 profile/
+*.txt
