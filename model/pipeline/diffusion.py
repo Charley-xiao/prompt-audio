@@ -40,8 +40,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         self.unet = CondUNet(latent_ch, 
                              cond_dim=128, 
                              latent_steps=latent_steps, 
-                             block_channels=(192,384,768),
-                             layers_per_block=3)
+                             block_channels=(192,384,768))
         if scheduler_type == "ddpm":
             self.scheduler = DDPMScheduler(num_train_timesteps=noise_steps)
         elif scheduler_type == "ddim":
