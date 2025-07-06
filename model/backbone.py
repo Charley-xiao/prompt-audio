@@ -129,7 +129,8 @@ class CondUNet(nn.Module):
             up_block_types = (
                 "UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",
             ),
-        ).enable_xformers_memory_efficient_attention()
+        )
+        self.unet.enable_xformers_memory_efficient_attention()
 
     def forward(self, noisy_lat, timesteps, prompt_embed):
         h = noisy_lat.unsqueeze(-1)
