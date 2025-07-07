@@ -127,11 +127,10 @@ class DiffusionVAEPipeline(pl.LightningModule):
         if batch_idx == 0:
             self._log_times(times)
             for i in range(min(3, wav_gen.size(0))):
-                # Create two subplots: one for generated and one for ground truth
                 fig, axs = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
-                axs[0].specgram(wav_gen[i].cpu().numpy(), NFFT=256, Fs=16000, Fc=0, noverlap=128)
+                axs[0].specgram(wav_gen[i].cpu().float().numpy(), NFFT=256, Fs=16000, Fc=0, noverlap=128)
                 axs[0].set_title(f"Generated Audio {i+1}")
-                axs[1].specgram(wav_gt[i].cpu().numpy(), NFFT=256, Fs=16000, Fc=0, noverlap=128)
+                axs[1].specgram(wav_gt[i].cpu().float().numpy(), NFFT=256, Fs=16000, Fc=0, noverlap=128)
                 axs[1].set_title(f"Ground Truth Audio {i+1}")
                 plt.tight_layout()
                 plt.savefig(f"samples/audio_comp_{self.current_epoch}_{batch_idx}_{i}.png")
