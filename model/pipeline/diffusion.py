@@ -52,7 +52,8 @@ class DiffusionVAEPipeline(pl.LightningModule):
         self.cfg_drop_prob = cfg_drop_prob
 
     def setup(self, stage=None):
-        self.scheduler_to_device(self.device)
+        self.scheduler_to_device(self.sched_train, self.device)
+        self.scheduler_to_device(self.sched_eval, self.device)
         torch.backends.cudnn.benchmark = True
         if self.fad is None:
             self.fad  = FrechetAudioDistance.with_vggish(device="cpu").to(self.device)
@@ -156,8 +157,8 @@ class DiffusionVAEPipeline(pl.LightningModule):
         self.log("val_CLAPSim", score, prog_bar=True, sync_dist=True)
         self.clap_sim.reset()
 
-    def scheduler_to_device(self, device):
-        sched = self.scheduler
+    @staticmethod
+    def scheduler_to_device(sched, device):
         for k, v in sched.__dict__.items():
             if torch.is_tensor(v):
                 setattr(sched, k, v.to(device))
