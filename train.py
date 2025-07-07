@@ -38,6 +38,8 @@ if __name__ == "__main__":
                    help="Choose the model type: 'diffusion', 'flow' or 'vrfm'")
     p.add_argument("--ckpt_dir", type=str, default="checkpoints",
                    help="Directory to save model checkpoints")
+    p.add_argument("--profile", action="store_true",
+                   help="Enable profiling of the training process")
     args = p.parse_args()
 
     dm = LAIONAudioDataModule(
@@ -49,9 +51,7 @@ if __name__ == "__main__":
 
     sample_len = args.segment_ms * 16  # 16 kHz
     if args.model == "diffusion":
-        model = DiffusionVAEPipeline(latent_ch=96, 
-                                     sample_length=sample_len, 
-                                     scheduler_type="ddim")
+        model = DiffusionVAEPipeline(latent_ch=96, sample_length=sample_len)
     elif args.model == "flow":
         model = FlowVAEPipeline(latent_ch=32, sample_length=sample_len)
     elif args.model == "vrfm":
@@ -78,7 +78,7 @@ if __name__ == "__main__":
         profiler=SimpleProfiler(
             dirpath="profile",
             filename=f"profiler-{args.model}.txt",
-        )
+        ) if args.profile else None,
     )
 
     try:

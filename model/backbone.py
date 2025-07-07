@@ -31,13 +31,17 @@ class AudioDecoder(nn.Module):
             nn.ConvTranspose1d(64 , 32, 4, 2, 1), nn.GELU(),
             nn.ConvTranspose1d(32 , 1 , 4, 2, 1),
         )
+        self.post = nn.Conv1d(1, 1, 3, padding=1, bias=False)
+        torch.nn.init.constant_(self.post.weight, 1/3)
         self.tanh = nn.Tanh()
         self.target_len = target_len
 
-    def forward(self, z: torch.Tensor):
-        h = self.pre(z)
+    def forward(self, z):
+        h   = self.pre(z)
         wav = self.deconv(h)
-        return self.tanh(wav[..., : self.target_len])
+        wav = self.post(wav)
+        wav = self.tanh(wav)[..., : self.target_len]
+        return wav
     
 
 class PromptEncoder(nn.Module):
