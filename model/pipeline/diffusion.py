@@ -126,17 +126,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
             self.clap_sim.update(sim)
         if batch_idx == 0:
             self._log_times(times)
-            for i in range(min(3, wav_gen.size(0))):
-                fig, axs = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
-                gen_sig = wav_gen[i].cpu().float().squeeze().numpy()
-                gt_sig  = wav_gt[i].cpu().float().squeeze().numpy()
-                axs[0].specgram(gen_sig, NFFT=256, Fs=16000, noverlap=128)
-                axs[0].set_title(f"Generated Audio {i+1}")
-                axs[1].specgram(gt_sig,  NFFT=256, Fs=16000, noverlap=128)
-                axs[1].set_title(f"Ground Truth Audio {i+1}")
-                plt.tight_layout()
-                plt.savefig(f"samples/audio_comp_{self.current_epoch}_{batch_idx}_{i}.png")
-                plt.close(fig)
+            self._plot_wavs(wav_gen, wav_gt, batch_idx)
 
     @rank_zero_only
     def _log_times(self, times):
@@ -148,6 +138,34 @@ class DiffusionVAEPipeline(pl.LightningModule):
             f"└─────────────────────"
         )
 
+    @rank_zero_only
+    def _plot_wavs(self, wav_gen, wav_gt, batch_idx):
+        # Specgram
+        for i in range(min(3, wav_gen.size(0))):
+            fig, axs = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
+            gen_sig = wav_gen[i].cpu().float().squeeze().numpy()
+            gt_sig  = wav_gt[i].cpu().float().squeeze().numpy()
+            axs[0].specgram(gen_sig, NFFT=256, Fs=16000, noverlap=128, scale='dB', mode='magnitude')
+            axs[0].set_title(f"Generated Audio {i+1}")
+            axs[1].specgram(gt_sig,  NFFT=256, Fs=16000, noverlap=128, scale='dB', mode='magnitude')
+            axs[1].set_title(f"Ground Truth Audio {i+1}")
+            plt.tight_layout()
+            plt.savefig(f"samples/spec_{self.current_epoch}_{i}.png")
+            plt.close(fig)
+        # Waveform
+        for i in range(min(3, wav_gen.size(0))):
+            fig = plt.figure(figsize=(10, 4))
+            gen_sig = wav_gen[i].cpu().float().squeeze().numpy()
+            gt_sig = wav_gt[i].cpu().float().squeeze().numpy()
+            plt.plot(gen_sig, label="Generated")
+            plt.plot(gt_sig, alpha=0.5, label="Ground Truth")
+            plt.legend()
+            plt.title(f"Waveform Comparison {i+1}")
+            plt.xlabel("Time")
+            plt.ylabel("Amplitude")
+            plt.savefig(f"samples/wav_{self.current_epoch}_{i}.png")
+            plt.close(fig)
+
     def on_validation_epoch_end(self):
         if (self.current_epoch + 1) % self.val_interval:
             return
@@ -157,6 +175,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         score = self.clap_sim.compute()
         self.log("val_CLAPSim", score, prog_bar=True, sync_dist=True)
         self.clap_sim.reset()
+        self.log("lr", self.lr_scheduler.get_last_lr()[0], prog_bar=True, sync_dist=True)
 
     @staticmethod
     def scheduler_to_device(sched, device):
