@@ -50,6 +50,10 @@ class DiffusionVAEPipeline(pl.LightningModule):
         self.clap_sim = MeanMetric()
         self.val_interval = n_val_epochs
         self.cfg_drop_prob = cfg_drop_prob
+        if self.cfg_drop_prob > 0:
+            print(f"CFG drop probability set to {self.cfg_drop_prob:.2f}")
+        else:
+            print("IMPORTANT: CFG drop probability is 0, no classifier-free guidance will be applied!")
 
     def setup(self, stage=None):
         self.scheduler_to_device(self.sched_train, self.device)
@@ -93,7 +97,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
     def training_step(self, batch, _):
         wav, prompt = batch
         z, mu, logvar, prompt_e = self(wav, prompt)
-        if torch.rand(1, device=self.device) < self.cfg_drop_prob:
+        if self.cfg_drop_prob > 0 and torch.rand(1, device=self.device) < self.cfg_drop_prob:
             prompt_e = torch.zeros_like(prompt_e)
         bsz = z.size(0)
         t = torch.randint(
@@ -116,7 +120,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         wav_gt, prompts = batch
         times = {}
         with _timer("gen", times):
-            wav_gen = self.generate(prompts, num_steps=100, to_cpu=False)
+            wav_gen = self.generate(prompts, num_steps=100, to_cpu=False, guidance_scale=3.0 if self.cfg_drop_prob > 0 else None)
         with _timer("fad", times):
             self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
         with _timer("clap", times):
@@ -193,27 +197,29 @@ class DiffusionVAEPipeline(pl.LightningModule):
 
     @torch.no_grad()
     def generate(
-        self, 
-        prompts: list[str], 
-        num_steps: int = 50, 
+        self,
+        prompts: list[str],
+        num_steps: int = 50,
+        guidance_scale: float | None = 3.0,
         to_cpu: bool = True,
-        guidance_scale: float = 3.0,
     ):
         self.eval()
         device = self.device
         cond = torch.cat([self._cached_text(t) for t in prompts], dim=0)
-        uncond = torch.zeros_like(cond)
+        if not guidance_scale:
+            eps_fn = lambda lat, t: self.unet(lat, t, cond)
+        else:
+            uncond = torch.zeros_like(cond)
+            def eps_fn(lat, t):
+                eps_uc = self.unet(lat, t, uncond)
+                eps_c  = self.unet(lat, t, cond)
+                return eps_uc + guidance_scale * (eps_c - eps_uc)
         lat = torch.randn(
-            cond.size(0),
-            self.hparams.latent_ch,
-            self.hparams.sample_length // 8,
-            device=device,
+            len(prompts), self.hparams.latent_ch,
+            self.hparams.sample_length // 8, device=device
         )
         self.sched_eval.set_timesteps(num_steps, device=device)
         for t in self.sched_eval.timesteps:
-            eps_uc = self.unet(lat, t, uncond)
-            eps_c  = self.unet(lat, t, cond)
-            eps = eps_uc + guidance_scale * (eps_c - eps_uc)
-            lat = self.sched_eval.step(eps, t, lat).prev_sample
+            lat = self.sched_eval.step(eps_fn(lat, t), t, lat).prev_sample
         wav = self.decoder(lat)
         return wav.cpu() if to_cpu else wav
