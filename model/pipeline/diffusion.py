@@ -97,10 +97,8 @@ class DiffusionVAEPipeline(pl.LightningModule):
     def training_step(self, batch, _):
         wav, prompt = batch
         z, mu, logvar, prompt_e = self(wav, prompt)
-        if self.cfg_drop_prob > 0:
-            batch_size = prompt_e.size(0)
-            mask = (torch.rand(batch_size, 1, 1, device=self.device) >= self.cfg_drop_prob).float()
-            prompt_e = prompt_e * mask
+        if self.cfg_drop_prob > 0 and torch.rand(1, device=self.device) < self.cfg_drop_prob:
+            prompt_e = torch.zeros_like(prompt_e)
         bsz = z.size(0)
         t = torch.randint(
             0, self.sched_train.config.num_train_timesteps,
