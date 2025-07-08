@@ -120,7 +120,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         wav_gt, prompts = batch
         times = {}
         with _timer("gen", times):
-            wav_gen = self.generate(prompts, num_steps=100, to_cpu=False, guidance_scale=0.2 if self.cfg_drop_prob > 0 else None)
+            wav_gen = self.generate(prompts, num_steps=100, to_cpu=False, guidance_scale=0.3 if self.cfg_drop_prob > 0 else None)
         with _timer("fad", times):
             self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
         with _timer("clap", times):
@@ -212,7 +212,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
             def eps_fn(lat, t):
                 eps_uc = self.unet(lat, t, uncond)
                 eps_c  = self.unet(lat, t, cond)
-                return eps_uc + guidance_scale * (eps_c - eps_uc)
+                return eps_c + guidance_scale * (eps_c - eps_uc)
         lat = torch.randn(
             len(prompts), self.hparams.latent_ch,
             self.hparams.sample_length // 8, device=device
