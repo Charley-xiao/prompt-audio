@@ -40,6 +40,8 @@ if __name__ == "__main__":
                    help="Directory to save model checkpoints")
     p.add_argument("--profile", action="store_true",
                    help="Enable profiling of the training process")
+    p.add_argument("--cfg_drop_prob", type=float, default=0.1,
+                   help="Classifier-free guidance drop probability, set to 0 for no CFG")
     args = p.parse_args()
 
     dm = LAIONAudioDataModule(
@@ -51,7 +53,7 @@ if __name__ == "__main__":
 
     sample_len = args.segment_ms * 16  # 16 kHz
     if args.model == "diffusion":
-        model = DiffusionVAEPipeline(latent_ch=96, sample_length=sample_len)
+        model = DiffusionVAEPipeline(latent_ch=96, sample_length=sample_len, cfg_drop_prob=args.cfg_drop_prob)
     elif args.model == "flow":
         model = FlowVAEPipeline(latent_ch=32, sample_length=sample_len)
     elif args.model == "vrfm":
