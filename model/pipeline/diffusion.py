@@ -179,7 +179,6 @@ class DiffusionVAEPipeline(pl.LightningModule):
         score = self.clap_sim.compute()
         self.log("val_CLAPSim", score, prog_bar=True, sync_dist=True)
         self.clap_sim.reset()
-        self.log("lr", self.lr_scheduler.get_last_lr()[0], prog_bar=True, sync_dist=True)
 
     @staticmethod
     def scheduler_to_device(sched, device):
