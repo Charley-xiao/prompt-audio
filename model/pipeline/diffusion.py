@@ -200,7 +200,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         self,
         prompts: list[str],
         num_steps: int = 50,
-        guidance_scale: float | None = 3.0,
+        guidance_scale: float | None = 0.3,
         to_cpu: bool = True,
     ):
         self.eval()
