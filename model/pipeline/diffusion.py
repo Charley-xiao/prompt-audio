@@ -120,7 +120,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         wav_gt, prompts = batch
         times = {}
         with _timer("gen", times):
-            wav_gen = self.generate(prompts, num_steps=100, to_cpu=False, guidance_scale=3.0 if self.cfg_drop_prob > 0 else None)
+            wav_gen = self.generate(prompts, num_steps=100, to_cpu=False, guidance_scale=0.2 if self.cfg_drop_prob > 0 else None)
         with _timer("fad", times):
             self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
         with _timer("clap", times):
