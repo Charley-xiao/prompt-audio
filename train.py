@@ -1,10 +1,13 @@
+import os
+os.environ.setdefault("NCCL_ASYNC_ERROR_HANDLING", "1")
+os.environ.setdefault("TORCH_ENABLE_MPS_FALLBACK", "1")
 import argparse, pytorch_lightning as pl, torch
 from lightning.pytorch.profilers import SimpleProfiler
 from model.pipeline.diffusion import DiffusionVAEPipeline
 from model.pipeline.fm import FlowVAEPipeline
 from model.pipeline.vrfm import VRFMVAEPipeline
 from datamodule.laion import LAIONAudioDataModule
-import torchaudio, os
+import torchaudio
 from pathlib import Path
 import glob
 
@@ -62,6 +65,8 @@ if __name__ == "__main__":
     trainer = pl.Trainer(
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices=args.gpus,
+        strategy="ddp",
+        sync_batchnorm=True,
         max_epochs=args.epochs,
         precision="bf16-mixed",
         log_every_n_steps=10,
@@ -85,7 +90,8 @@ if __name__ == "__main__":
 
     try:
         trainer.fit(model, dm)
-        inference(model)
+        if trainer.is_global_zero:
+            inference(model)
     except KeyboardInterrupt:
         print("\nCaught KeyboardInterrupt! Loading last checkpoint...")
         last = latest_ckpt(f"{args.ckpt_dir}/{args.model}")

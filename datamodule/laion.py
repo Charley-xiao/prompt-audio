@@ -3,6 +3,7 @@ import torch.nn.functional as F
 from datasets import load_dataset, Audio
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
+from pytorch_lightning.utilities import rank_zero_only
 
 
 class LAIONClipDataset(Dataset):
@@ -60,6 +61,10 @@ class LAIONAudioDataModule(pl.LightningDataModule):
     def _collate(batch):
         wavs, caps = zip(*batch)
         return torch.stack(wavs), list(caps)
+    
+    @rank_zero_only
+    def prepare_data(self):
+        load_dataset(**self.hf_kwargs)
 
     def setup(self, stage: str | None = None):
         if stage not in (None, "fit"):
@@ -80,10 +85,11 @@ class LAIONAudioDataModule(pl.LightningDataModule):
         return DataLoader(
             self.train_ds,
             batch_size=self.bs,
-            shuffle=True,
+            shuffle=False,
             num_workers=self.nw,
             pin_memory=True,
-            persistent_workers=True,
+            persistent_workers=self.nw > 0,
+            drop_last=True,
             collate_fn=self._collate,
         )
 
@@ -94,6 +100,6 @@ class LAIONAudioDataModule(pl.LightningDataModule):
             shuffle=False,
             num_workers=self.nw,
             pin_memory=True,
-            persistent_workers=True,
+            persistent_workers=self.nw > 0,
             collate_fn=self._collate,
         )
