@@ -12,48 +12,38 @@ class AudioEncoder(nn.Module):
                  w2v_ckpt: str = "facebook/wav2vec2-base",
                  trainable: bool = False):
         super().__init__()
-        self.feat_extractor = Wav2Vec2FeatureExtractor.from_pretrained(w2v_ckpt)
         self.backbone = Wav2Vec2Model.from_pretrained(w2v_ckpt)
         if not trainable:
             self.backbone.eval()
             for p in self.backbone.parameters():
                 p.requires_grad_(False)
-
         hd = self.backbone.config.hidden_size
         self.mu = nn.Conv1d(hd, latent_ch, 1)
         self.logvar = nn.Conv1d(hd, latent_ch, 1)
 
     def forward(self, wav: torch.Tensor):
-        B, _, L = wav.shape
-        inputs = self.feat_extractor(
-            wav.squeeze(1), sampling_rate=16_000,
-            return_tensors="pt", padding=True
-        ).to(wav.device)
-
-        hid = self.backbone(**inputs).last_hidden_state
+        inp = wav.squeeze(1)
+        hid = self.backbone(input_values=inp).last_hidden_state
         hid = hid.transpose(1, 2)
-
         return self.mu(hid), self.logvar(hid)
-    
+
 
 class AudioDecoder(nn.Module):
     def __init__(self, latent_ch: int = 64,
                  target_len: int = 160_000):
         super().__init__()
-        self.proj = nn.Conv1d(latent_ch, 768, 1)
+        self.proj = nn.Conv1d(latent_ch, 1, 1)
         self.smoother = nn.Conv1d(1, 1, 5, padding=2, bias=False)
         torch.nn.init.constant_(self.smoother.weight, 1/5)
         self.target_len = target_len
 
     def forward(self, z):
-        h = self.proj(z).transpose(1, 2)
-        h = h.mean(-1, keepdim=True).transpose(1, 2)
-        up = F.interpolate(h, size=self.target_len,
-                           mode="nearest")
-        wav = torch.tanh(self.smoother(up))
-        return wav
+        h = self.proj(z)
+        wav = F.interpolate(h, size=self.target_len,
+                             mode="nearest")
+        wav = self.smoother(wav)
+        return torch.tanh(wav)
 
-    
 
 class PromptEncoder(nn.Module):
     """T5 encoder + mean pooling -> projection"""
