@@ -72,6 +72,7 @@ if __name__ == "__main__":
         precision="bf16-mixed",
         log_every_n_steps=10,
         val_check_interval=1.0,
+        enable_checkpointing=not args.no_save_ckpt,
         callbacks=[
             pl.callbacks.ModelCheckpoint(
                 dirpath=f"{args.ckpt_dir}/{args.model}",
