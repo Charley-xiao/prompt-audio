@@ -45,11 +45,8 @@ if __name__ == "__main__":
                    help="Enable profiling of the training process")
     p.add_argument("--cfg_drop_prob", type=float, default=0.1,
                    help="Classifier-free guidance drop probability, set to 0 for no CFG")
-    p.add_argument("--save_model", action="store_true")
+    p.add_argument("--no_save_ckpt", action="store_true")
     args = p.parse_args()
-
-    if args.ckpt_dir is not None:
-        args.save_model = True
 
     dm = LAIONAudioDataModule(
         batch_size=args.batch_size,
@@ -84,7 +81,7 @@ if __name__ == "__main__":
                 save_top_k=3,
                 save_last=True,
                 every_n_epochs=1,
-            ) if args.save_model else None,
+            ) if not args.no_save_ckpt else None,
         ],
         profiler=SimpleProfiler(
             dirpath="profile",
@@ -97,7 +94,7 @@ if __name__ == "__main__":
         if trainer.is_global_zero:
             inference(model)
     except KeyboardInterrupt:
-        if not args.save_model:
+        if args.no_save_ckpt:
             print("\nCaught KeyboardInterrupt!")
             exit(0)
         print("\nCaught KeyboardInterrupt! Loading last checkpoint...")
