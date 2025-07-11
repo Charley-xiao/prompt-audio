@@ -48,6 +48,9 @@ if __name__ == "__main__":
     p.add_argument("--save_model", action="store_true")
     args = p.parse_args()
 
+    if args.ckpt_dir is not None:
+        args.save_model = True
+
     dm = LAIONAudioDataModule(
         batch_size=args.batch_size,
         segment_ms=args.segment_ms,
