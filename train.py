@@ -81,8 +81,8 @@ if __name__ == "__main__":
                 save_top_k=3,
                 save_last=True,
                 every_n_epochs=1,
-            ) if not args.no_save_ckpt else None,
-        ],
+            )
+        ] if not args.no_save_ckpt else None,
         profiler=SimpleProfiler(
             dirpath="profile",
             filename=f"profiler-{args.model}.txt",
