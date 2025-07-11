@@ -37,7 +37,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         self.encoder = AudioEncoder(latent_ch)
         self.decoder = AudioDecoder(latent_ch, target_len=sample_length)
         self.textenc = PromptEncoderv2(proj_dim=128, preset="mini", trainable=False)
-        latent_steps = sample_length // 8
+        latent_steps = sample_length // 320
         self.unet = CondUNet(latent_ch, 
                              cond_dim=128, 
                              latent_steps=latent_steps, 

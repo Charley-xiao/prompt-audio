@@ -1,47 +1,58 @@
 import torch
 import torch.nn as nn
 from transformers import T5Tokenizer, T5EncoderModel, AutoModel, AutoTokenizer
+from transformers import Wav2Vec2Model, Wav2Vec2FeatureExtractor
 from diffusers import UNet2DConditionModel
 import torch.nn.functional as F
 import xformers
 
 
 class AudioEncoder(nn.Module):
-    def __init__(self, latent_ch: int = 32):
+    def __init__(self, latent_ch: int = 64,
+                 w2v_ckpt: str = "facebook/wav2vec2-base",
+                 trainable: bool = False):
         super().__init__()
-        self.conv = nn.Sequential(
-            nn.Conv1d(1, 32, 4, 2, 1), nn.GELU(),
-            nn.Conv1d(32, 64, 4, 2, 1), nn.GELU(),
-            nn.Conv1d(64, 128, 4, 2, 1), nn.GELU(),
-        )
-        self.mu = nn.Conv1d(128, latent_ch, 1)
-        self.logvar = nn.Conv1d(128, latent_ch, 1)
+        self.feat_extractor = Wav2Vec2FeatureExtractor.from_pretrained(w2v_ckpt)
+        self.backbone = Wav2Vec2Model.from_pretrained(w2v_ckpt)
+        if not trainable:
+            self.backbone.eval()
+            for p in self.backbone.parameters():
+                p.requires_grad_(False)
+
+        hd = self.backbone.config.hidden_size
+        self.mu = nn.Conv1d(hd, latent_ch, 1)
+        self.logvar = nn.Conv1d(hd, latent_ch, 1)
 
     def forward(self, wav: torch.Tensor):
-        h = self.conv(wav)
-        return self.mu(h), self.logvar(h)
+        B, _, L = wav.shape
+        inputs = self.feat_extractor(
+            wav.squeeze(1), sampling_rate=16_000,
+            return_tensors="pt", padding=True
+        ).to(wav.device)
+
+        hid = self.backbone(**inputs).last_hidden_state
+        hid = hid.transpose(1, 2)
+
+        return self.mu(hid), self.logvar(hid)
     
 
 class AudioDecoder(nn.Module):
-    def __init__(self, latent_ch: int = 32, target_len: int = 160_000):
+    def __init__(self, latent_ch: int = 64,
+                 target_len: int = 160_000):
         super().__init__()
-        self.pre = nn.Conv1d(latent_ch, 128, 1)
-        self.deconv = nn.Sequential(
-            nn.ConvTranspose1d(128, 64, 4, 2, 1), nn.GELU(),
-            nn.ConvTranspose1d(64 , 32, 4, 2, 1), nn.GELU(),
-            nn.ConvTranspose1d(32 , 1 , 4, 2, 1),
-        )
-        self.post = nn.Conv1d(1, 1, 3, padding=1, bias=False)
-        torch.nn.init.constant_(self.post.weight, 1/3)
-        self.tanh = nn.Tanh()
+        self.proj = nn.Conv1d(latent_ch, 768, 1)
+        self.smoother = nn.Conv1d(1, 1, 5, padding=2, bias=False)
+        torch.nn.init.constant_(self.smoother.weight, 1/5)
         self.target_len = target_len
 
     def forward(self, z):
-        h   = self.pre(z)
-        wav = self.deconv(h)
-        wav = self.post(wav)
-        wav = self.tanh(wav)[..., : self.target_len]
+        h = self.proj(z).transpose(1, 2)
+        h = h.mean(-1, keepdim=True).transpose(1, 2)
+        up = F.interpolate(h, size=self.target_len,
+                           mode="nearest")
+        wav = torch.tanh(self.smoother(up))
         return wav
+
     
 
 class PromptEncoder(nn.Module):
