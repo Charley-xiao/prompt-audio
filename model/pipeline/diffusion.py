@@ -75,7 +75,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
             opt,
             mode="min",
             factor=0.5,
-            patience=4,
+            patience=8,
             min_lr=1e-6,
         )
         return {
