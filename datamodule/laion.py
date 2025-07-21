@@ -38,7 +38,7 @@ class LAIONAudioDataModule(pl.LightningDataModule):
         num_workers: int = 4,
         sample_rate: int = 16_000,
         segment_ms: int = 1_000,
-        val_pct: float = 0.005,
+        val_pct: float = 0.00005,
         laion_path: str = "laion/LAION-Audio-300M",
         split: str = "train",
         max_rows: int | None = None,
