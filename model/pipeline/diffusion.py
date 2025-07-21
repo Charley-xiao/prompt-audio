@@ -30,13 +30,17 @@ class DiffusionVAEPipeline(pl.LightningModule):
         noise_steps=1000,
         n_val_epochs=1,
         cfg_drop_prob=0.1,
+        disable_text_enc=False
     ):
         super().__init__()
         self.save_hyperparameters()
 
         self.encoder = AudioEncoder(latent_ch)
         self.decoder = AudioDecoder(latent_ch, target_len=sample_length)
-        self.textenc = PromptEncoderv2(proj_dim=128, preset="mini", trainable=False)
+        if not disable_text_enc:
+            self.textenc = PromptEncoderv2(proj_dim=128, preset="mini", trainable=False)
+        else:
+            cfg_drop_prob = 0
         latent_steps = sample_length // 320
         self.unet = CondUNet(latent_ch, 
                              cond_dim=128, 
@@ -91,7 +95,10 @@ class DiffusionVAEPipeline(pl.LightningModule):
     def forward(self, wav, prompt):
         mu, logvar = self.encoder(wav)
         z = self.reparameterize(mu, logvar)
-        prompt_e = self.textenc(prompt, device=self.device)
+        if self.hparams.disable_text_enc:
+            prompt_e = torch.zeros((wav.size(0), 128), device=self.device) # 128: proj_dim
+        else:
+            prompt_e = self.textenc(prompt, device=self.device)
         return z, mu, logvar, prompt_e
 
     def training_step(self, batch, _):

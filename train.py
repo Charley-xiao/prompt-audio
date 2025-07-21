@@ -16,7 +16,7 @@ INFERENCE_PROMPT = "A melancholic piano melody plays, characterized by a slow te
 
 def inference(model: DiffusionVAEPipeline | FlowVAEPipeline | VRFMVAEPipeline, out_dir="samples"):
     model.eval().cuda() if torch.cuda.is_available() else model.cpu()
-    wav = model.generate([INFERENCE_PROMPT], num_steps=500).squeeze(0)
+    wav = model.generate([INFERENCE_PROMPT], num_steps=100).squeeze(0)
     Path(out_dir).mkdir(exist_ok=True, parents=True)
     path = Path(out_dir) / "demo.wav"
     torchaudio.save(str(path), wav, 16_000)
@@ -46,6 +46,8 @@ if __name__ == "__main__":
     p.add_argument("--cfg_drop_prob", type=float, default=0.1,
                    help="Classifier-free guidance drop probability, set to 0 for no CFG")
     p.add_argument("--no_save_ckpt", action="store_true")
+    p.add_argument("--disable_text_enc", action="store_true",
+                   help="Disable text encoder, useful for debugging")
     args = p.parse_args()
 
     dm = LAIONAudioDataModule(
@@ -57,11 +59,24 @@ if __name__ == "__main__":
 
     sample_len = args.segment_ms * 16  # 16 kHz
     if args.model == "diffusion":
-        model = DiffusionVAEPipeline(latent_ch=96, sample_length=sample_len, cfg_drop_prob=args.cfg_drop_prob)
+        model = DiffusionVAEPipeline(
+            latent_ch=96, 
+            sample_length=sample_len, 
+            cfg_drop_prob=args.cfg_drop_prob,
+            disable_text_enc=args.disable_text_enc
+        )
     elif args.model == "flow":
-        model = FlowVAEPipeline(latent_ch=32, sample_length=sample_len)
+        model = FlowVAEPipeline(
+            latent_ch=32, 
+            sample_length=sample_len,
+            disable_text_enc=args.disable_text_enc
+        )
     elif args.model == "vrfm":
-        model = VRFMVAEPipeline(latent_ch=32, sample_length=sample_len)
+        model = VRFMVAEPipeline(
+            latent_ch=32, 
+            sample_length=sample_len,
+            disable_text_enc=args.disable_text_enc
+        )
 
     trainer = pl.Trainer(
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
@@ -72,6 +87,7 @@ if __name__ == "__main__":
         precision="32",
         log_every_n_steps=10,
         val_check_interval=1.0,
+        gradient_checkpointing=True,
         enable_checkpointing=not args.no_save_ckpt,
         callbacks=[
             pl.callbacks.ModelCheckpoint(
