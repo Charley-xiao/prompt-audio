@@ -212,7 +212,10 @@ class DiffusionVAEPipeline(pl.LightningModule):
     ):
         self.eval()
         device = self.device
-        cond = torch.cat([self._cached_text(t) for t in prompts], dim=0)
+        if self.hparams.disable_text_enc:
+            cond = torch.zeros((len(prompts), 128), device=device)  # 128: proj_dim
+        else:
+            cond = torch.cat([self._cached_text(t) for t in prompts], dim=0)
         if not guidance_scale:
             eps_fn = lambda lat, t: self.unet(lat, t, cond)
         else:
