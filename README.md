@@ -5,9 +5,12 @@
 ## Installation
 
 ```bash
+sudo apt-get update
+sudo apt-get upgrade
 conda create -n prompt-audio python=3.12 -y
 conda activate prompt-audio
-pip install torch torchvision torchaudio pytorch-lightning datasets transformers diffusers sentencepiece librosa soundfile torcheval lightning xformers matplotlib
+conda install ffmpeg
+pip install torch torchvision torchaudio pytorch-lightning datasets transformers diffusers sentencepiece librosa soundfile torcheval lightning xformers matplotlib torchcodec
 ```
 
 ## Usage
