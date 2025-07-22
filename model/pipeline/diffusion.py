@@ -6,17 +6,9 @@ from diffusers import DDPMScheduler, DDIMScheduler
 from torcheval.metrics import FrechetAudioDistance
 from torchmetrics.aggregation import MeanMetric
 from model.clap_module import CLAPAudioEmbedding
-import contextlib, time
 from pytorch_lightning.utilities import rank_zero_only
 from functools import lru_cache
 from matplotlib import pyplot as plt
-
-
-@contextlib.contextmanager
-def _timer(name, times_dict):
-    start = time.time()
-    yield
-    times_dict[name] = time.time() - start
 
 
 class DiffusionVAEPipeline(pl.LightningModule):
@@ -38,6 +30,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         self.encoder = AudioEncoder(latent_ch, trainable=False)
         for n,p in self.encoder.backbone.named_parameters():
             if n.startswith("encoder.layers.11") or n.startswith("project_q"):
+                print(f"Making {n} trainable")
                 p.requires_grad_(True)
         self.decoder = AudioDecoder(latent_ch, target_len=sample_length)
         if not disable_text_enc:
@@ -138,29 +131,14 @@ class DiffusionVAEPipeline(pl.LightningModule):
     
     def validation_step(self, batch, batch_idx):
         wav_gt, prompts = batch
-        times = {}
-        with _timer("gen", times):
-            wav_gen = self.generate(prompts, num_steps=100, to_cpu=False, guidance_scale=0.3 if self.cfg_drop_prob > 0 else None)
-        with _timer("fad", times):
-            self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
-        with _timer("clap", times):
-            a_emb = self.clap(wav_gen)
-            t_emb = self.clap.text_embed(prompts)
-            sim   = F.cosine_similarity(a_emb, t_emb)
-            self.clap_sim.update(sim)
+        wav_gen = self.generate(prompts, num_steps=100, to_cpu=False, guidance_scale=0.3 if self.cfg_drop_prob > 0 else None)
+        self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
+        a_emb = self.clap(wav_gen)
+        t_emb = self.clap.text_embed(prompts)
+        sim   = F.cosine_similarity(a_emb, t_emb)
+        self.clap_sim.update(sim)
         if batch_idx == 0:
-            self._log_times(times)
             self._plot_wavs(wav_gen, wav_gt, batch_idx)
-
-    @rank_zero_only
-    def _log_times(self, times):
-        print(
-            f"┌─ Validation timings\n"
-            f"│  Generation : {times['gen'] :.2f} s\n"
-            f"│  FAD update : {times['fad'] :.2f} s\n"
-            f"│  CLAP sim   : {times['clap']:.2f} s\n"
-            f"└─────────────────────"
-        )
 
     @rank_zero_only
     def _plot_wavs(self, wav_gen, wav_gt, batch_idx):
