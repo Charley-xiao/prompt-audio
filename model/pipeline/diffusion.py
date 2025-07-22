@@ -117,7 +117,8 @@ class DiffusionVAEPipeline(pl.LightningModule):
         noise_pred = self.unet(noisy_z, t, prompt_e)
         loss_diff  = F.mse_loss(noise_pred, noise)
         kld = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
-        rec = F.l1_loss(self.decoder(z), wav)
+        dec_wav = self.decoder(z, target_len=wav.size(-1))
+        rec = F.l1_loss(dec_wav, wav)
         loss = loss_diff + self.hparams.beta_kl * kld + self.hparams.beta_rec * rec
         self.log_dict(
             {"loss": loss, "L_diff": loss_diff, "L_KL": kld, "L_rec": rec},
@@ -231,5 +232,5 @@ class DiffusionVAEPipeline(pl.LightningModule):
         self.sched_eval.set_timesteps(num_steps, device=device)
         for t in self.sched_eval.timesteps:
             lat = self.sched_eval.step(eps_fn(lat, t), t, lat).prev_sample
-        wav = self.decoder(lat)
+        wav = self.decoder(lat, target_len=self.hparams.sample_length)
         return wav.cpu() if to_cpu else wav

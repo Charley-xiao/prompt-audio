@@ -71,11 +71,16 @@ class AudioDecoder(nn.Module):
         )
         self.target_len = target_len
 
-    def forward(self, z):
-        h   = self.pre(z)
-        h   = self.up(h)
+    def forward(self, z, target_len: int | None = None):
+        h = self.pre(z)
+        h = self.up(h)
         wav = self.post(h)
-        return wav[..., : self.target_len]
+        if target_len is not None:
+            wav = F.interpolate(
+                wav, size=target_len,
+                mode="nearest"
+            )
+        return wav
 
 
 
