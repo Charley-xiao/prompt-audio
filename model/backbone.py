@@ -28,12 +28,10 @@ class AudioEncoder(nn.Module):
         return self.mu(hid), self.logvar(hid)
 
 
-from torch.nn.utils import spectral_norm as sn
-
 def upsample_block(c_in, c_out, k=5):
     return nn.Sequential(
         nn.Upsample(scale_factor=2, mode="nearest"),
-        sn(nn.Conv1d(c_in, c_out, k, padding=k//2)),
+        nn.Conv1d(c_in, c_out, k, padding=k//2),
         nn.GELU(),
     )
 
@@ -42,7 +40,7 @@ class ResStack(nn.Module):
         super().__init__()
         dilations = (1, 3, 9)
         self.convs = nn.ModuleList([
-            sn(nn.Conv1d(ch, ch, k, padding=d, dilation=d))
+            nn.Conv1d(ch, ch, k, padding=d, dilation=d)
             for d in dilations
         ])
 
@@ -54,7 +52,7 @@ class ResStack(nn.Module):
 class AudioDecoder(nn.Module):
     def __init__(self, latent_ch=96, target_len=160_000):
         super().__init__()
-        self.pre = sn(nn.Conv1d(latent_ch, 512, 1))
+        self.pre = nn.Conv1d(latent_ch, 512, 1)
 
         self.up = nn.Sequential(
             upsample_block(512, 256),
@@ -66,10 +64,10 @@ class AudioDecoder(nn.Module):
             upsample_block(64, 32),
             ResStack(32), ResStack(32),
             nn.Upsample(scale_factor=5, mode="nearest"),
-            sn(nn.Conv1d(32, 16, 5, padding=2)),
+            nn.Conv1d(32, 16, 5, padding=2),
             nn.GELU(),
         )
-        self.post = sn(nn.Conv1d(16, 1, 7, padding=3))
+        self.post = nn.Conv1d(16, 1, 7, padding=3)
         self.tanh = nn.Tanh()
         self.target_len = target_len
 

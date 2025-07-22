@@ -1,6 +1,6 @@
 import os
-os.environ.setdefault("TORCH_NCCL_ASYNC_ERROR_HANDLING", "1")
-os.environ.setdefault("TORCH_ENABLE_MPS_FALLBACK", "1")
+# os.environ.setdefault("TORCH_NCCL_ASYNC_ERROR_HANDLING", "1")
+# os.environ.setdefault("TORCH_ENABLE_MPS_FALLBACK", "1")
 import argparse, pytorch_lightning as pl, torch
 from lightning.pytorch.profilers import SimpleProfiler
 from model.pipeline.diffusion import DiffusionVAEPipeline
