@@ -24,8 +24,8 @@ class DiffusionVAEPipeline(pl.LightningModule):
         self,
         latent_ch=64,
         lr=2e-4,
-        beta_kl=0.01,
-        beta_rec=1.0,
+        beta_kl=0.02,
+        beta_rec=2.0,
         sample_length=16000,
         noise_steps=1000,
         n_val_epochs=1,
@@ -35,7 +35,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
 
-        self.encoder = AudioEncoder(latent_ch)
+        self.encoder = AudioEncoder(latent_ch, trainable=True)
         self.decoder = AudioDecoder(latent_ch, target_len=sample_length)
         if not disable_text_enc:
             self.textenc = PromptEncoderv2(proj_dim=128, preset="mini", trainable=False)
@@ -121,8 +121,16 @@ class DiffusionVAEPipeline(pl.LightningModule):
         rec = F.l1_loss(dec_wav, wav)
         loss = loss_diff + self.hparams.beta_kl * kld + self.hparams.beta_rec * rec
         self.log_dict(
-            {"loss": loss, "L_diff": loss_diff, "L_KL": kld, "L_rec": rec},
-            prog_bar=True)
+            {
+                "loss": loss,
+                "L_diff": loss_diff,
+                "L_KL": kld,
+                "L_rec": rec,
+                "mu_mean": torch.mean(mu),
+                "sigma_mean": torch.mean((0.5*logvar).exp()),
+            },
+            prog_bar=True
+        )
         return loss
     
     def validation_step(self, batch, batch_idx):

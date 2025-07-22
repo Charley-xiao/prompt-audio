@@ -28,60 +28,58 @@ class AudioEncoder(nn.Module):
         return self.mu(hid), self.logvar(hid)
 
 
-import torch.nn.utils.weight_norm as wn
+from torch.nn.utils import spectral_norm as sn
 
-def _upsample_block(c_in, c_out):
+def upsample_block(c_in, c_out, k=5):
     return nn.Sequential(
         nn.Upsample(scale_factor=2, mode="nearest"),
-        wn(nn.Conv1d(c_in, c_out, 5, padding=2)),
+        sn(nn.Conv1d(c_in, c_out, k, padding=k//2)),
         nn.GELU(),
     )
 
-class ResidualUnit(nn.Module):
-    def __init__(self, ch, k=3, d=1):
+class ResStack(nn.Module):
+    def __init__(self, ch, k=3):
         super().__init__()
-        self.block = nn.Sequential(
-            wn(nn.Conv1d(ch, ch, k, padding=d, dilation=d)),
-            nn.GELU(),
-            wn(nn.Conv1d(ch, ch, k, padding=1)),
-        )
+        dilations = (1, 3, 9)
+        self.convs = nn.ModuleList([
+            sn(nn.Conv1d(ch, ch, k, padding=d, dilation=d))
+            for d in dilations
+        ])
+
     def forward(self, x):
-        return x + self.block(x)
+        for conv in self.convs:
+            x = x + nn.GELU()(conv(x))
+        return x
 
 class AudioDecoder(nn.Module):
-    def __init__(self, latent_ch=64, target_len=160_000):
+    def __init__(self, latent_ch=96, target_len=160_000):
         super().__init__()
-        self.pre = wn(nn.Conv1d(latent_ch, 256, 1))
+        self.pre = sn(nn.Conv1d(latent_ch, 512, 1))
 
         self.up = nn.Sequential(
-            _upsample_block(256, 256),
-            ResidualUnit(256, k=3, d=1),
-            _upsample_block(256, 128),
-            ResidualUnit(128, k=3, d=3),
-            _upsample_block(128,  64),
-            ResidualUnit(64,  k=3, d=9),
-            _upsample_block(64,   32),
-            ResidualUnit(32,  k=3, d=27),
-            _upsample_block(32,   16),
+            upsample_block(512, 256),
+            ResStack(256), ResStack(256),
+            upsample_block(256, 128),
+            ResStack(128), ResStack(128),
+            upsample_block(128, 64),
+            ResStack(64), ResStack(64),
+            upsample_block(64, 32),
+            ResStack(32), ResStack(32),
+            nn.Upsample(scale_factor=5, mode="nearest"),
+            sn(nn.Conv1d(32, 16, 5, padding=2)),
+            nn.GELU(),
         )
-
-        self.post = nn.Sequential(
-            wn(nn.Conv1d(16, 1, 7, padding=3)),
-            nn.Tanh(),
-        )
+        self.post = sn(nn.Conv1d(16, 1, 7, padding=3))
+        self.tanh = nn.Tanh()
         self.target_len = target_len
 
     def forward(self, z, target_len: int | None = None):
-        h = self.pre(z)
-        h = self.up(h)
-        wav = self.post(h)
+        h   = self.pre(z)
+        h   = self.up(h)
+        wav = self.tanh(self.post(h))
         if target_len is not None:
-            wav = F.interpolate(
-                wav, size=target_len,
-                mode="nearest"
-            )
+            wav = F.interpolate(wav, size=target_len, mode="nearest")
         return wav
-
 
 
 class PromptEncoder(nn.Module):
