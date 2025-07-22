@@ -78,7 +78,6 @@ if __name__ == "__main__":
             disable_text_enc=args.disable_text_enc
         )
 
-    model = torch.compile(model)
     trainer = pl.Trainer(
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices=args.gpus,
