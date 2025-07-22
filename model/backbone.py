@@ -28,21 +28,55 @@ class AudioEncoder(nn.Module):
         return self.mu(hid), self.logvar(hid)
 
 
-class AudioDecoder(nn.Module):
-    def __init__(self, latent_ch: int = 64,
-                 target_len: int = 160_000):
+import torch.nn.utils.weight_norm as wn
+
+def _upsample_block(c_in, c_out):
+    return nn.Sequential(
+        nn.Upsample(scale_factor=2, mode="nearest"),
+        wn(nn.Conv1d(c_in, c_out, 5, padding=2)),
+        nn.GELU(),
+    )
+
+class ResidualUnit(nn.Module):
+    def __init__(self, ch, k=3, d=1):
         super().__init__()
-        self.proj = nn.Conv1d(latent_ch, 1, 1)
-        self.smoother = nn.Conv1d(1, 1, 5, padding=2, bias=False)
-        torch.nn.init.constant_(self.smoother.weight, 1/5)
+        self.block = nn.Sequential(
+            wn(nn.Conv1d(ch, ch, k, padding=d, dilation=d)),
+            nn.GELU(),
+            wn(nn.Conv1d(ch, ch, k, padding=1)),
+        )
+    def forward(self, x):
+        return x + self.block(x)
+
+class AudioDecoder(nn.Module):
+    def __init__(self, latent_ch=64, target_len=160_000):
+        super().__init__()
+        self.pre = wn(nn.Conv1d(latent_ch, 256, 1))
+
+        self.up = nn.Sequential(
+            _upsample_block(256, 256),
+            ResidualUnit(256, k=3, d=1),
+            _upsample_block(256, 128),
+            ResidualUnit(128, k=3, d=3),
+            _upsample_block(128,  64),
+            ResidualUnit(64,  k=3, d=9),
+            _upsample_block(64,   32),
+            ResidualUnit(32,  k=3, d=27),
+            _upsample_block(32,   16),
+        )
+
+        self.post = nn.Sequential(
+            wn(nn.Conv1d(16, 1, 7, padding=3)),
+            nn.Tanh(),
+        )
         self.target_len = target_len
 
     def forward(self, z):
-        h = self.proj(z)
-        wav = F.interpolate(h, size=self.target_len,
-                             mode="nearest")
-        wav = self.smoother(wav)
-        return torch.tanh(wav)
+        h   = self.pre(z)
+        h   = self.up(h)
+        wav = self.post(h)
+        return wav[..., : self.target_len]
+
 
 
 class PromptEncoder(nn.Module):
