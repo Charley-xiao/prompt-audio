@@ -35,7 +35,10 @@ class DiffusionVAEPipeline(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
 
-        self.encoder = AudioEncoder(latent_ch, trainable=True)
+        self.encoder = AudioEncoder(latent_ch, trainable=False)
+        for n,p in self.encoder.backbone.named_parameters():
+            if n.startswith("encoder.layers.11") or n.startswith("project_q"):
+                p.requires_grad_(True)
         self.decoder = AudioDecoder(latent_ch, target_len=sample_length)
         if not disable_text_enc:
             self.textenc = PromptEncoderv2(proj_dim=128, preset="mini", trainable=False)
