@@ -122,15 +122,18 @@ class DiffusionVAEPipeline(pl.LightningModule):
         kld = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
         dec_wav = self.decoder(z, target_len=wav.size(-1))
         rec = F.l1_loss(dec_wav, wav)
-        loss = loss_diff + self.hparams.beta_kl * kld + self.hparams.beta_rec * rec
+        sigma = (0.5 * logvar).exp()
+        L_sigma = F.mse_loss(sigma, torch.ones_like(sigma))
+        loss = loss_diff + self.hparams.beta_kl * kld + self.hparams.beta_rec * rec + 0.05 * L_sigma
         self.log_dict(
             {
                 "loss": loss,
                 "L_diff": loss_diff,
                 "L_KL": kld,
                 "L_rec": rec,
+                "L_sigma": L_sigma,
                 "mu_mean": torch.mean(mu),
-                "sigma_mean": torch.mean((0.5*logvar).exp()),
+                "sigma_mean": torch.mean(sigma),
             },
             prog_bar=True
         )
