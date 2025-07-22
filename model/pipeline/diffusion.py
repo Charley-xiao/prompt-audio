@@ -25,7 +25,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         latent_ch=64,
         lr=2e-4,
         beta_kl=0.001,
-        beta_rec=2.0,
+        beta_rec=5.0,
         sample_length=16000,
         noise_steps=1000,
         n_val_epochs=1,
@@ -76,7 +76,6 @@ class DiffusionVAEPipeline(pl.LightningModule):
         return mu + std * eps
 
     def configure_optimizers(self):
-        # return torch.optim.AdamW(self.parameters(), lr=self.hparams.lr)
         opt = torch.optim.AdamW(self.parameters(), lr=self.hparams.lr)
         sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
             opt,
@@ -123,15 +122,13 @@ class DiffusionVAEPipeline(pl.LightningModule):
         dec_wav = self.decoder(z, target_len=wav.size(-1))
         rec = F.l1_loss(dec_wav, wav)
         sigma = (0.5 * logvar).exp()
-        L_sigma = F.mse_loss(sigma, torch.ones_like(sigma))
-        loss = loss_diff + self.hparams.beta_kl * kld + self.hparams.beta_rec * rec + 0.05 * L_sigma
+        loss = loss_diff + self.hparams.beta_kl * kld + self.hparams.beta_rec * rec
         self.log_dict(
             {
                 "loss": loss,
                 "L_diff": loss_diff,
                 "L_KL": kld,
                 "L_rec": rec,
-                "L_sigma": L_sigma,
                 "mu_mean": torch.mean(mu),
                 "sigma_mean": torch.mean(sigma),
             },
