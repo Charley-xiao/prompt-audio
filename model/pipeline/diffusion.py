@@ -9,6 +9,7 @@ from model.clap_module import CLAPAudioEmbedding
 from pytorch_lightning.utilities import rank_zero_only
 from functools import lru_cache
 from matplotlib import pyplot as plt
+import torch._dynamo
 
 
 class DiffusionVAEPipeline(pl.LightningModule):
@@ -131,17 +132,14 @@ class DiffusionVAEPipeline(pl.LightningModule):
         )
         return loss
     
+    @torch._dynamo.disable
     def validation_step(self, batch, batch_idx):
         wav_gt, prompts = batch
         wav_gen = self.generate(prompts, num_steps=100, to_cpu=False, guidance_scale=0.3 if self.cfg_drop_prob > 0 else None)
-        if self.fad.device != wav_gen.device:
-            self.fad.to(wav_gen.device)
         self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
         a_emb = self.clap(wav_gen)
         t_emb = self.clap.text_embed(prompts)
         sim   = F.cosine_similarity(a_emb, t_emb)
-        if self.clap_sim.device != sim.device:
-            self.clap_sim.to(sim.device)
         self.clap_sim.update(sim)
         if batch_idx == 0:
             self._plot_wavs(wav_gen, wav_gt, batch_idx)
