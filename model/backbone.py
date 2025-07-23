@@ -135,13 +135,16 @@ class PromptEncoderv2(nn.Module):
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
         return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
 
-    def forward(self, prompts: list[str], device):
-        tok = self.tokenizer(
+    def forward(self, prompts: list[str]):
+        device = self.proj.weight.device
+        tok_cpu = self.tokenizer(
             prompts, padding=True, truncation=True, return_tensors="pt"
-        ).to(device)
-
+        )
+        tok = {k: v.to(device) for k, v in tok_cpu.items()}
+        if next(self.encoder.parameters()).device != device:
+            self.encoder.to(device)
         out = self.encoder(**tok)
-        emb = self.mean_pooling(out, tok['attention_mask'])
+        emb = self.mean_pooling(out, tok["attention_mask"])
         emb = F.normalize(emb, p=2, dim=1)
         return self.proj(emb)
 

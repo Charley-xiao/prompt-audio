@@ -94,7 +94,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         if self.hparams.disable_text_enc:
             prompt_e = torch.zeros((wav.size(0), 128), device=self.device) # 128: proj_dim
         else:
-            prompt_e = self.textenc(prompt, device=self.device)
+            prompt_e = self.textenc(prompt)
         return z, mu, logvar, prompt_e
 
     def training_step(self, batch, _):
@@ -191,7 +191,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
 
     @lru_cache(maxsize=2048)
     def _cached_text(self, txt: str):
-        return self.textenc([txt], device=self.device)
+        return self.textenc([txt])
 
     @torch.no_grad()
     def generate(
