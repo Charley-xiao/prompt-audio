@@ -17,7 +17,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         latent_ch=64,
         lr=2e-4,
         beta_kl=0.001,
-        beta_rec=10.0,
+        beta_rec=100.0,
         sample_length=16000,
         noise_steps=1000,
         n_val_epochs=1,
@@ -125,7 +125,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
                 "mu_mean": torch.mean(mu),
                 "sigma_mean": torch.mean(sigma),
             },
-            prog_bar=True
+            prog_bar=True, sync_dist=True, on_step=True, on_epoch=True
         )
         return loss
     
