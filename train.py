@@ -1,11 +1,7 @@
 import os
-# os.environ.setdefault("TORCH_NCCL_ASYNC_ERROR_HANDLING", "1")
-# os.environ.setdefault("TORCH_ENABLE_MPS_FALLBACK", "1")
 import argparse, pytorch_lightning as pl, torch
 from lightning.pytorch.profilers import SimpleProfiler
 from model.pipeline.diffusion import DiffusionVAEPipeline
-from model.pipeline.fm import FlowVAEPipeline
-from model.pipeline.vrfm import VRFMVAEPipeline
 from datamodule.laion import LAIONAudioDataModule
 import torchaudio
 from pathlib import Path
@@ -14,7 +10,7 @@ import glob
 torch.set_float32_matmul_precision('highest')
 INFERENCE_PROMPT = "A melancholic piano melody plays, characterized by a slow tempo and a minor key. The recording quality suggests a home studio setup, with a slightly warm and intimate sound. The piece evokes feelings of wistful longing."
 
-def inference(model: DiffusionVAEPipeline | FlowVAEPipeline | VRFMVAEPipeline, out_dir="samples"):
+def inference(model: DiffusionVAEPipeline, out_dir="samples"):
     model.eval().cuda() if torch.cuda.is_available() else model.cpu()
     wav = model.generate([INFERENCE_PROMPT], num_steps=100).squeeze(0)
     Path(out_dir).mkdir(exist_ok=True, parents=True)
@@ -37,14 +33,14 @@ if __name__ == "__main__":
     p.add_argument("--data_files", type=str, default=None,
                    help="for debugging, specify a file or list of files to use")
     p.add_argument("--model", type=str, default="diffusion",
-                   choices=["diffusion", "flow", "vrfm"],
+                   choices=["diffusion", "flow"],
                    help="Choose the model type: 'diffusion', 'flow' or 'vrfm'")
     p.add_argument("--ckpt_dir", type=str, default="checkpoints",
                    help="Directory to save model checkpoints")
     p.add_argument("--profile", action="store_true",
                    help="Enable profiling of the training process")
     p.add_argument("--cfg_drop_prob", type=float, default=0.1,
-                   help="Classifier-free guidance drop probability, set to 0 for no CFG")
+                   help="p_uncond in CFG, set to 0 for no CFG")
     p.add_argument("--no_save_ckpt", action="store_true")
     p.add_argument("--disable_text_enc", action="store_true",
                    help="Disable text encoder, useful for debugging")
@@ -65,19 +61,10 @@ if __name__ == "__main__":
             cfg_drop_prob=args.cfg_drop_prob,
             disable_text_enc=args.disable_text_enc
         )
-    elif args.model == "flow":
-        model = FlowVAEPipeline(
-            latent_ch=32, 
-            sample_length=sample_len,
-            disable_text_enc=args.disable_text_enc
-        )
-    elif args.model == "vrfm":
-        model = VRFMVAEPipeline(
-            latent_ch=32, 
-            sample_length=sample_len,
-            disable_text_enc=args.disable_text_enc
-        )
+    else:
+        raise NotImplementedError(f"Model {args.model} is not implemented yet.")
 
+    os.makedirs("samples/", exist_ok=True)
     trainer = pl.Trainer(
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices=args.gpus,
@@ -105,24 +92,6 @@ if __name__ == "__main__":
         ) if args.profile else None,
     )
 
-    try:
-        trainer.fit(model, dm)
-        if trainer.is_global_zero:
-            inference(model)
-    except KeyboardInterrupt:
-        if args.no_save_ckpt:
-            print("\nCaught KeyboardInterrupt!")
-            exit(0)
-        print("\nCaught KeyboardInterrupt! Loading last checkpoint...")
-        last = latest_ckpt(f"{args.ckpt_dir}/{args.model}")
-        if last is None:
-            print("No checkpoint found, aborting.")
-            exit(1)
-        print(f"Resuming from {last}")
-        if args.model == "flow":
-            model = FlowVAEPipeline.load_from_checkpoint(last)
-        elif args.model == "vrfm":
-            model = VRFMVAEPipeline.load_from_checkpoint(last)
-        else:
-            model = DiffusionVAEPipeline.load_from_checkpoint(last)
+    trainer.fit(model, dm)
+    if trainer.is_global_zero:
         inference(model)

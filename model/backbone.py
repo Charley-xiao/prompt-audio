@@ -98,24 +98,6 @@ class AudioDecoder(nn.Module):
         if target_len is not None:
             wav = F.interpolate(wav, size=target_len, mode="nearest")
         return wav
-
-
-class PromptEncoder(nn.Module):
-    """T5 encoder + mean pooling -> projection"""
-    def __init__(self, model_name="t5-base", proj_dim=256):
-        super().__init__()
-        self.tokenizer = T5Tokenizer.from_pretrained(model_name)
-        self.encoder = T5EncoderModel.from_pretrained(model_name)
-        self.proj = nn.Linear(self.encoder.config.d_model, proj_dim, bias=False)
-
-    @torch.no_grad()
-    def forward(self, prompts: list[str], device):
-        tok = self.tokenizer(
-            prompts, padding=True, truncation=True, return_tensors="pt", max_length=512
-        ).to(device)
-        hid = self.encoder(**tok).last_hidden_state
-        pooled = hid.mean(dim=1)
-        return self.proj(pooled)
     
 
 MODEL_PRESETS = {
@@ -204,68 +186,3 @@ class CondUNet(nn.Module):
         ).sample.squeeze(-1)
 
         return eps
-
-
-class VRFMCondUNet(nn.Module):
-    def __init__(
-        self,
-        latent_ch: int,
-        cond_dim: int,
-        latent_steps: int,
-        extra_cond_dim: int = 0,
-        block_channels=(128, 256, 512),
-        layers_per_block=2,
-        xattn_heads: int = 8,
-    ):
-        super().__init__()
-
-        in_ch = latent_ch + extra_cond_dim if extra_cond_dim else latent_ch
-        self.use_extra = extra_cond_dim > 0
-
-        if self.use_extra and extra_cond_dim != latent_ch:
-            self.z_proj = nn.Conv1d(extra_cond_dim, extra_cond_dim, 1)
-        else:
-            self.z_proj = nn.Identity()
-
-        self.unet = UNet2DConditionModel(
-            sample_size=(latent_steps, 1),
-            in_channels=in_ch,
-            out_channels=latent_ch,
-            cross_attention_dim=cond_dim,
-            block_out_channels=block_channels,
-            layers_per_block=layers_per_block,
-            transformer_layers_per_block=layers_per_block,
-            attention_head_dim=latent_ch // xattn_heads,
-            down_block_types=(
-                "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D",
-            ),
-            up_block_types=(
-                "UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",
-            ),
-        )
-
-    def forward(
-        self,
-        noisy_lat: torch.Tensor,          # (B, C, T)
-        timesteps: torch.Tensor,          # (B,)
-        prompt_embed: torch.Tensor,       # (B, D)
-        z_lat: torch.Tensor | None = None # (B, C_ex, T) or None
-    ) -> torch.Tensor:
-        if self.use_extra:
-            if z_lat is None:
-                raise ValueError("z_lat must be provided when extra_cond_dim>0")
-            z_feat = self.z_proj(z_lat) # (B, C_ex, T)
-            x = torch.cat([noisy_lat, z_feat], dim=1)
-        else:
-            x = noisy_lat
-
-        h = x.unsqueeze(-1) # (B,C,T,1)
-        enc_hid = prompt_embed.unsqueeze(1) # (B,1,D)
-
-        out = self.unet(
-            sample=h,
-            timestep=timesteps,
-            encoder_hidden_states=enc_hid,
-        ).sample.squeeze(-1) # -> (B,C,T)
-
-        return out
