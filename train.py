@@ -65,6 +65,7 @@ if __name__ == "__main__":
         raise NotImplementedError(f"Model {args.model} is not implemented yet.")
 
     os.makedirs("samples/", exist_ok=True)
+    model = torch.compile(model, mode="max-autotune") if torch.cuda.is_available() else model
     trainer = pl.Trainer(
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices=args.gpus,
