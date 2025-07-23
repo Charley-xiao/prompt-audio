@@ -17,7 +17,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         latent_ch=64,
         lr=2e-4,
         beta_kl=0.001,
-        beta_rec=5.0,
+        beta_rec=10.0,
         sample_length=16000,
         noise_steps=1000,
         n_val_epochs=1,
