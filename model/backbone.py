@@ -50,31 +50,51 @@ class ResStack(nn.Module):
         return x
 
 class AudioDecoder(nn.Module):
-    def __init__(self, latent_ch=96, target_len=160_000):
+    def __init__(
+        self,
+        latent_ch: int = 64,
+        d_model: int = 768,
+        nhead: int = 12,
+        num_layers: int = 12,
+        target_len: int = 160_000,
+    ):
         super().__init__()
-        self.pre = nn.Conv1d(latent_ch, 512, 1)
-
+        self.prenet = nn.Conv1d(latent_ch, d_model, kernel_size=1)
+        enc_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=4 * d_model,
+            activation="gelu",
+            batch_first=True,
+            norm_first=True,
+        )
+        self.transformer = nn.TransformerEncoder(enc_layer, num_layers=num_layers)
+        self.proj = nn.Conv1d(d_model, 512, kernel_size=1)
         self.up = nn.Sequential(
+            upsample_block(512, 512),
+            ResStack(512), ResStack(512),
             upsample_block(512, 256),
             ResStack(256), ResStack(256),
             upsample_block(256, 128),
             ResStack(128), ResStack(128),
             upsample_block(128, 64),
             ResStack(64), ResStack(64),
-            upsample_block(64, 32),
-            ResStack(32), ResStack(32),
             nn.Upsample(scale_factor=5, mode="nearest"),
-            nn.Conv1d(32, 16, 5, padding=2),
+            nn.Conv1d(64, 16, kernel_size=5, padding=2),
             nn.GELU(),
         )
-        self.post = nn.Conv1d(16, 1, 7, padding=3)
+        self.post = nn.Conv1d(16, 1, kernel_size=7, padding=3)
         self.tanh = nn.Tanh()
         self.target_len = target_len
 
-    def forward(self, z, target_len: int | None = None):
-        h   = self.pre(z)
-        h   = self.up(h)
-        wav = self.tanh(self.post(h))
+    def forward(self, z: torch.Tensor, target_len: int | None = None):
+        h = self.prenet(z) # (B, d_model, T_latent)
+        h = h.transpose(1, 2) # (B, T_latent, d_model) for transformer
+        h = self.transformer(h)
+        h = h.transpose(1, 2) # back to (B, d_model, T_latent)
+        h = self.proj(h) # (B, 512, T_latent)
+        h = self.up(h) # upsampled feature map
+        wav = self.tanh(self.post(h)) # (B, 1, ~target_len)
         if target_len is not None:
             wav = F.interpolate(wav, size=target_len, mode="nearest")
         return wav
