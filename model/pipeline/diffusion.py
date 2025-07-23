@@ -1,7 +1,7 @@
 import torch
 import pytorch_lightning as pl
 import torch.nn.functional as F
-from model.backbone import AudioEncoder, AudioDecoder, PromptEncoder, CondUNet, PromptEncoderv2
+from model.backbone import AudioEncoder, AudioDecoder, CondUNet, PromptEncoderv2
 from diffusers import DDPMScheduler, DDIMScheduler
 from torcheval.metrics import FrechetAudioDistance
 from torchmetrics.aggregation import MeanMetric

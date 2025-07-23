@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from transformers import T5Tokenizer, T5EncoderModel, AutoModel, AutoTokenizer
-from transformers import Wav2Vec2Model, Wav2Vec2FeatureExtractor
+from transformers import AutoModel, AutoTokenizer
+from transformers import Wav2Vec2Model
 from diffusers import UNet2DConditionModel
 import torch.nn.functional as F
 import xformers
