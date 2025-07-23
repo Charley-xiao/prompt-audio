@@ -151,6 +151,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         if batch_idx == 0:
             self._plot_wavs(wav_gen, wav_gt, batch_idx)
 
+    @torch._dynamo.disable
     @rank_zero_only
     def _plot_wavs(self, wav_gen, wav_gt, batch_idx):
         # Specgram
