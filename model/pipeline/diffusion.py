@@ -133,14 +133,21 @@ class DiffusionVAEPipeline(pl.LightningModule):
         return loss
     
     @torch._dynamo.disable
+    def _update_fad(self, pred, target):
+        self.fad.update(pred, target)
+
+    @torch._dynamo.disable
+    def _update_clap(self, pred, target):
+        a_emb = self.clap(pred)
+        t_emb = self.clap.text_embed(target)
+        sim = F.cosine_similarity(a_emb, t_emb)
+        self.clap_sim.update(sim)
+    
     def validation_step(self, batch, batch_idx):
         wav_gt, prompts = batch
         wav_gen = self.generate(prompts, num_steps=100, to_cpu=False, guidance_scale=0.3 if self.cfg_drop_prob > 0 else None)
-        self.fad.update(wav_gen.squeeze(1), wav_gt.squeeze(1))
-        a_emb = self.clap(wav_gen)
-        t_emb = self.clap.text_embed(prompts)
-        sim   = F.cosine_similarity(a_emb, t_emb)
-        self.clap_sim.update(sim)
+        self._update_fad(wav_gen.squeeze(1), wav_gt.squeeze(1))
+        self._update_clap(wav_gen, prompts)
         if batch_idx == 0:
             self._plot_wavs(wav_gen, wav_gt, batch_idx)
 
