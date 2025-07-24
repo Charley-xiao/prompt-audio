@@ -44,8 +44,6 @@ if __name__ == "__main__":
     p.add_argument("--no_save_ckpt", action="store_true")
     p.add_argument("--disable_text_enc", action="store_true",
                    help="Disable text encoder, useful for debugging")
-    p.add_argument("--do_not_compile", action="store_true",
-                   help="Disable torch.compile for debugging")
     p.add_argument("--resume_from", type=str, default=None,
                    help="Path to a checkpoint to resume training from")
     args = p.parse_args()
@@ -72,8 +70,6 @@ if __name__ == "__main__":
     if args.resume_from:
         print(f"Resuming from {args.resume_from}")
         model = model.load_from_checkpoint(args.resume_from)
-    if not args.do_not_compile:
-        model = torch.compile(model, mode="max-autotune") if torch.cuda.is_available() else model
     trainer = pl.Trainer(
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices=args.gpus,

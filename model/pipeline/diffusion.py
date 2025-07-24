@@ -9,7 +9,6 @@ from model.clap_module import CLAPAudioEmbedding
 from pytorch_lightning.utilities import rank_zero_only
 from functools import lru_cache
 from matplotlib import pyplot as plt
-import torch._dynamo
 
 
 class DiffusionVAEPipeline(pl.LightningModule):
@@ -132,11 +131,9 @@ class DiffusionVAEPipeline(pl.LightningModule):
         )
         return loss
     
-    @torch._dynamo.disable
     def _update_fad(self, pred, target):
         self.fad.update(pred, target)
 
-    @torch._dynamo.disable
     def _update_clap(self, pred, target):
         a_emb = self.clap(pred)
         t_emb = self.clap.text_embed(target)
@@ -151,7 +148,6 @@ class DiffusionVAEPipeline(pl.LightningModule):
         if batch_idx == 0:
             self._plot_wavs(wav_gen, wav_gt, batch_idx)
 
-    @torch._dynamo.disable
     @rank_zero_only
     def _plot_wavs(self, wav_gen, wav_gt, batch_idx):
         # Specgram
