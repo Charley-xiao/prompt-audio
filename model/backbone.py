@@ -158,19 +158,12 @@ class CondUNet(nn.Module):
         block_channels = (128, 256, 512),
         layers_per_block = 2,
         xattn_heads: int = 8,
-        in_ch: int | None = None,
-        out_ch: int | None = None,
-        sample_size: tuple[int, int] | None = None,
     ):
         super().__init__()
-        in_channels  = in_ch  if in_ch  is not None else latent_ch
-        out_channels = out_ch if out_ch is not None else latent_ch
-        ss = sample_size if sample_size is not None else (latent_steps, 1)
-
         self.unet = UNet2DConditionModel(
-            sample_size = ss,
-            in_channels = in_channels, # 1 for mel-branch
-            out_channels = out_channels,
+            sample_size = (latent_steps, 1),
+            in_channels = latent_ch,
+            out_channels = latent_ch,
             cross_attention_dim = cond_dim,
             block_out_channels = block_channels,
             layers_per_block = layers_per_block,
@@ -186,24 +179,13 @@ class CondUNet(nn.Module):
         self.unet.enable_xformers_memory_efficient_attention()
 
     def forward(self, noisy_lat, timesteps, prompt_embed):
-        """
-        Supports both 3D (B, C, T) and 4D (B, C, H, W) inputs.
-        - For (B, C, T), we add a trailing W=1.
-        - For (B, C, H, W), we keep as-is.
-        """
-        squeeze_back = False
-        if noisy_lat.dim() == 3:
-            noisy_lat = noisy_lat.unsqueeze(-1)  # (B, C, T) -> (B, C, T, 1)
-            squeeze_back = True
-
-        enc_hid = prompt_embed.unsqueeze(1)  # (B, 1, D)
+        h = noisy_lat.unsqueeze(-1)
+        enc_hid = prompt_embed.unsqueeze(1)
 
         eps = self.unet(
-            sample=noisy_lat,
+            sample=h,
             timestep=timesteps,
             encoder_hidden_states=enc_hid,
-        ).sample
+        ).sample.squeeze(-1)
 
-        if squeeze_back:
-            eps = eps.squeeze(-1)  # back to (B, C, T)
         return eps

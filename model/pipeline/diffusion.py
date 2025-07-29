@@ -9,7 +9,6 @@ from model.clap_module import CLAPAudioEmbedding
 from pytorch_lightning.utilities import rank_zero_only
 from functools import lru_cache
 from matplotlib import pyplot as plt
-import torchaudio
 
 
 class DiffusionVAEPipeline(pl.LightningModule):
@@ -23,16 +22,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         noise_steps=1000,
         n_val_epochs=1,
         cfg_drop_prob=0.1,
-        disable_text_enc=False,
-        # --- dual-domain args ---
-        enable_dual=False,
-        beta_mel: float = 1.0,
-        beta_cons: float = 10.0,
-        n_mels: int = 80,
-        n_fft: int = 1024,
-        hop_length: int = 320,   # 20 ms @ 16k
-        win_length: int = 1024,
-        sample_rate: int = 16000,
+        disable_text_enc=False
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -48,38 +38,12 @@ class DiffusionVAEPipeline(pl.LightningModule):
         else:
             cfg_drop_prob = 0
         latent_steps = sample_length // 320
-
-        # Wave-latent
         self.unet = CondUNet(latent_ch, 
                              cond_dim=128, 
                              latent_steps=latent_steps, 
                              block_channels=(192,384,768))
         self.sched_train = DDPMScheduler(num_train_timesteps=noise_steps)
         self.sched_eval  = DDIMScheduler.from_config(self.sched_train.config, clip_sample=False)
-
-        # Mel branch
-        if enable_dual:
-            mel_steps = sample_length // self.hparams.hop_length
-            self.unet_mel = CondUNet(
-                latent_ch, cond_dim=128, latent_steps=mel_steps,
-                block_channels=(128,256,512),
-                in_ch=1, out_ch=1, sample_size=(mel_steps, self.hparams.n_mels)
-            )
-            self.sched_train_mel = DDPMScheduler(num_train_timesteps=noise_steps)
-            self.melspec = torchaudio.transforms.MelSpectrogram(
-                sample_rate=self.hparams.sample_rate,
-                n_fft=self.hparams.n_fft,
-                hop_length=self.hparams.hop_length,
-                win_length=self.hparams.win_length,
-                n_mels=self.hparams.n_mels,
-                power=2.0,
-                center=True,
-                f_min=0.0,
-                f_max=self.hparams.sample_rate / 2,
-                norm=None,
-                mel_scale="htk",
-            )
-            self.amp2db = torchaudio.transforms.AmplitudeToDB(stype="power", top_db=80.0)
 
         self.fad = None
         self.clap = None
@@ -95,10 +59,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         print(f"Setting up DiffusionVAEPipeline on {self.device}")
         self.scheduler_to_device(self.sched_train, self.device)
         self.scheduler_to_device(self.sched_eval, self.device)
-        self.scheduler_to_device(self.sched_train_mel, self.device)
         torch.backends.cudnn.benchmark = True
-        self.melspec.to(self.device)
-        self.amp2db.to(self.device)
         if self.fad is None:
             self.fad = FrechetAudioDistance.with_vggish(device="cpu").to(self.device)
         if self.clap is None:
@@ -108,20 +69,6 @@ class DiffusionVAEPipeline(pl.LightningModule):
     def reparameterize(mu, logvar):
         std, eps = (0.5 * logvar).exp(), torch.randn_like(mu)
         return mu + std * eps
-    
-    def _wav_to_logmel(self, wav: torch.Tensor) -> torch.Tensor:
-        """
-        wav: (B, 1, T)
-        return: (B, 1, T_mel, F_mel) in [-1, 1]
-        """
-        x = wav  # (B,1,T)
-        x = x.squeeze(1)
-        mel = self.melspec(x)  # (B, n_mels, T_mel)
-        db  = self.amp2db(mel)  # roughly [-80, 0]
-        db01 = (db + 80.0) / 80.0
-        norm = db01 * 2.0 - 1.0  # [-1, 1]
-        norm = norm.permute(0, 2, 1)  # (B, T_mel, n_mels)
-        return norm[:, None, ...]     # (B, 1, T_mel, n_mels)
 
     def configure_optimizers(self):
         opt = torch.optim.AdamW(self.parameters(), lr=self.hparams.lr)
@@ -157,8 +104,6 @@ class DiffusionVAEPipeline(pl.LightningModule):
         keep_mask = (torch.rand(prompt_e.size(0), 1,
                                 device=prompt_e.device) >= self.cfg_drop_prob).float()
         prompt_e = prompt_e * keep_mask
-
-        # ===== Wave-latent diffusion =====
         bsz = z.size(0)
         t = torch.randint(
             0, self.sched_train.config.num_train_timesteps,
@@ -168,58 +113,22 @@ class DiffusionVAEPipeline(pl.LightningModule):
         noisy_z = self.sched_train.add_noise(z, noise, t)
         noise_pred = self.unet(noisy_z, t, prompt_e)
         loss_diff  = F.mse_loss(noise_pred, noise)
-
-        # ===== Mel-spectrogram diffusion =====
-        if self.hparams.enable_dual:
-            mel_clean = self._wav_to_logmel(wav) # (B,1,Tm,F)
-            mel_noise = torch.randn_like(mel_clean)
-            mel_noisy = self.sched_train_mel.add_noise(mel_clean, mel_noise, t)
-            mel_noise_pred = self.unet_mel(mel_noisy, t, prompt_e)  # (B,1,Tm,F)
-            loss_diff_mel = F.mse_loss(mel_noise_pred, mel_noise)
-
-        # ===== VAE decode + losses =====
         kld = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
         dec_wav = self.decoder(z, target_len=wav.size(-1))
         rec = F.l1_loss(dec_wav, wav)
-        
-        if self.hparams.enable_dual:
-            # ===== Consistency loss =====
-            mel_rec = self._wav_to_logmel(dec_wav).detach()  # optional: detach to target only via rec; remove .detach() if you want mel to backprop through decoder as well
-            loss_cons = F.l1_loss(mel_rec, mel_clean)
-
-            loss = (
-                loss_diff
-                + self.hparams.beta_kl * kld
-                + self.hparams.beta_rec * rec
-                + self.hparams.beta_mel * loss_diff_mel
-                + self.hparams.beta_cons * loss_cons
-            )
-            self.log_dict(
-                {
-                    "loss": loss,
-                    "L_diff_wav": loss_diff,
-                    "L_diff_mel": loss_diff_mel,
-                    "L_cons": loss_cons,
-                    "L_KL": kld,
-                    "L_rec": rec,
-                },
-                prog_bar=True, sync_dist=True, on_step=True, on_epoch=True
-            )
-        else:
-            loss = (
-                loss_diff
-                + self.hparams.beta_kl * kld
-                + self.hparams.beta_rec * rec
-            )
-            self.log_dict(
-                {
-                    "loss": loss,
-                    "L_diff": loss_diff,
-                    "L_KL": kld,
-                    "L_rec": rec,
-                },
-                prog_bar=True, sync_dist=True, on_step=True, on_epoch=True
-            )
+        sigma = (0.5 * logvar).exp()
+        loss = loss_diff + self.hparams.beta_kl * kld + self.hparams.beta_rec * rec
+        self.log_dict(
+            {
+                "loss": loss,
+                "L_diff": loss_diff,
+                "L_KL": kld,
+                "L_rec": rec,
+                "mu_mean": torch.mean(mu),
+                "sigma_mean": torch.mean(sigma),
+            },
+            prog_bar=True, sync_dist=True, on_step=True, on_epoch=True
+        )
         return loss
     
     def _update_fad(self, pred, target):
