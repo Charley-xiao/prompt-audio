@@ -46,6 +46,7 @@ if __name__ == "__main__":
                    help="Disable text encoder, useful for debugging")
     p.add_argument("--resume_from", type=str, default=None,
                    help="Path to a checkpoint to resume training from")
+    p.add_argument("--enable_dual", action="store_true")
     args = p.parse_args()
 
     dm = LAIONAudioDataModule(
@@ -61,7 +62,8 @@ if __name__ == "__main__":
             latent_ch=96, 
             sample_length=sample_len, 
             cfg_drop_prob=args.cfg_drop_prob,
-            disable_text_enc=args.disable_text_enc
+            disable_text_enc=args.disable_text_enc,
+            enable_dual=args.enable_dual,
         )
     else:
         raise NotImplementedError(f"Model {args.model} is not implemented yet.")
