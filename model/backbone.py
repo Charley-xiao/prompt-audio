@@ -28,12 +28,6 @@ class AudioEncoder(nn.Module):
         return self.mu(hid), self.logvar(hid)
 
 
-def upsample_block(c_in, c_out, k=5, scale=4):
-    return nn.Sequential(
-        nn.ConvTranspose1d(c_in, c_out, kernel_size=scale, stride=scale),
-        nn.GELU(),
-    )
-
 class ResStack(nn.Module):
     def __init__(self, ch, k=3):
         super().__init__()
@@ -49,52 +43,53 @@ class ResStack(nn.Module):
         return x
 
 class AudioDecoder(nn.Module):
-    def __init__(
-        self,
-        latent_ch: int = 64,
-        d_model: int = 768,
-        nhead: int = 12,
-        num_layers: int = 12,
-        target_len: int = 160_000,
-    ):
+    def __init__(self, latent_ch=64, d_model=768, nhead=12,
+                 num_layers=12, target_len=160_000):
         super().__init__()
-        self.prenet = nn.Conv1d(latent_ch, d_model, kernel_size=1)
+        self.prenet = nn.Conv1d(latent_ch, d_model, 1)
+
         enc_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=nhead,
-            dim_feedforward=4 * d_model,
-            activation="gelu",
-            batch_first=True,
-            norm_first=True,
+            d_model=d_model, nhead=nhead,
+            dim_feedforward=4*d_model, activation="gelu",
+            batch_first=True, norm_first=True,
         )
-        self.transformer = nn.TransformerEncoder(enc_layer, num_layers=num_layers)
-        self.proj = nn.Conv1d(d_model, 512, kernel_size=1)
+        self.transformer = nn.TransformerEncoder(enc_layer, num_layers)
+
+        self.proj = nn.Conv1d(d_model, 512, 1)
+
+        def up(c_in, c_out, scale):
+            return nn.Sequential(
+                nn.ConvTranspose1d(c_in, c_out,
+                                   kernel_size=2*scale, stride=scale,
+                                   padding=scale//2, output_padding=scale%2),
+                nn.GELU(),
+            )
+
         self.up = nn.Sequential(
-            upsample_block(512, 512, scale=4),   # ×4 → 200
-            ResStack(512), ResStack(512),
-            upsample_block(512, 256, scale=4),   # ×4 → 800
-            ResStack(256), ResStack(256),
-            upsample_block(256, 128, scale=4),   # ×4 → 3 200
-            ResStack(128), ResStack(128),
-            upsample_block(128, 64,  scale=5),   # ×5 → 16 000
-            ResStack(64), ResStack(64),
+            up(512, 512, 4), ResStack(512), ResStack(512),
+            up(512, 256, 4), ResStack(256), ResStack(256),
+            up(256, 128, 4), ResStack(128), ResStack(128),
+            up(128,  64, 5), ResStack(64),  ResStack(64),
         )
-        self.post = nn.Conv1d(16, 1, kernel_size=7, padding=3)
+
+        self.post = nn.Conv1d(64, 1, kernel_size=7, padding=3)
         self.tanh = nn.Tanh()
         self.target_len = target_len
 
-    def forward(self, z: torch.Tensor, target_len: int | None = None):
-        h = self.prenet(z) # (B, d_model, T_latent)
-        h = h.transpose(1, 2) # (B, T_latent, d_model) for transformer
-        h = self.transformer(h)
-        h = h.transpose(1, 2) # back to (B, d_model, T_latent)
-        h = self.proj(h) # (B, 512, T_latent)
-        h = self.up(h) # upsampled feature map
-        wav = self.tanh(self.post(h)) # (B, 1, ~target_len)
-        if target_len is not None:
-            wav = F.interpolate(wav, size=target_len, mode="nearest")
+    def forward(self, z, target_len=None):
+        h = self.prenet(z)
+        h = self.transformer(h.transpose(1, 2)).transpose(1, 2)
+        h = self.proj(h)
+        h = self.up(h)
+        wav = self.tanh(self.post(h))
+
+        if target_len is not None and wav.size(-1) != target_len:
+            print(f"[CRITICAL] Decoder output length mismatch! "
+                    f"Expected {target_len}, got {wav.size(-1)}. ")
+            wav = F.interpolate(wav, size=target_len,
+                                mode="linear", align_corners=False)
         return wav
-    
+
 
 MODEL_PRESETS = {
     "mini":  "sentence-transformers/all-MiniLM-L6-v2",
