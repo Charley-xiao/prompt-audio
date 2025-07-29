@@ -28,10 +28,9 @@ class AudioEncoder(nn.Module):
         return self.mu(hid), self.logvar(hid)
 
 
-def upsample_block(c_in, c_out, k=5):
+def upsample_block(c_in, c_out, k=5, scale=4):
     return nn.Sequential(
-        nn.Upsample(scale_factor=2, mode="nearest"),
-        nn.Conv1d(c_in, c_out, k, padding=k//2),
+        nn.ConvTranspose1d(c_in, c_out, kernel_size=scale, stride=scale),
         nn.GELU(),
     )
 
@@ -71,17 +70,14 @@ class AudioDecoder(nn.Module):
         self.transformer = nn.TransformerEncoder(enc_layer, num_layers=num_layers)
         self.proj = nn.Conv1d(d_model, 512, kernel_size=1)
         self.up = nn.Sequential(
-            upsample_block(512, 512),
+            upsample_block(512, 512, scale=4),   # ×4 → 200
             ResStack(512), ResStack(512),
-            upsample_block(512, 256),
+            upsample_block(512, 256, scale=4),   # ×4 → 800
             ResStack(256), ResStack(256),
-            upsample_block(256, 128),
+            upsample_block(256, 128, scale=4),   # ×4 → 3 200
             ResStack(128), ResStack(128),
-            upsample_block(128, 64),
+            upsample_block(128, 64,  scale=5),   # ×5 → 16 000
             ResStack(64), ResStack(64),
-            nn.Upsample(scale_factor=5, mode="nearest"),
-            nn.Conv1d(64, 16, kernel_size=5, padding=2),
-            nn.GELU(),
         )
         self.post = nn.Conv1d(16, 1, kernel_size=7, padding=3)
         self.tanh = nn.Tanh()

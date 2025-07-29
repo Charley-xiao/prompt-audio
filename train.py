@@ -7,7 +7,7 @@ import torchaudio
 from pathlib import Path
 import glob
 
-torch.set_float32_matmul_precision('highest')
+torch.set_float32_matmul_precision('medium')
 INFERENCE_PROMPT = "A melancholic piano melody plays, characterized by a slow tempo and a minor key. The recording quality suggests a home studio setup, with a slightly warm and intimate sound. The piece evokes feelings of wistful longing."
 
 def inference(model: DiffusionVAEPipeline, out_dir="samples"):
@@ -79,7 +79,7 @@ if __name__ == "__main__":
         strategy="ddp",
         sync_batchnorm=True,
         max_epochs=args.epochs,
-        precision="32",
+        precision="bf16-mixed",
         log_every_n_steps=10,
         val_check_interval=1.0,
         enable_checkpointing=not args.no_save_ckpt,

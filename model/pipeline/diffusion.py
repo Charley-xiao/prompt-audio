@@ -16,8 +16,8 @@ class DiffusionVAEPipeline(pl.LightningModule):
         self,
         latent_ch=64,
         lr=2e-4,
-        beta_kl=0.0001,
-        beta_rec=100.0,
+        beta_kl=0.001,
+        beta_rec=10.0,
         sample_length=16000,
         noise_steps=1000,
         n_val_epochs=1,
@@ -142,7 +142,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
     
     def validation_step(self, batch, batch_idx):
         wav_gt, prompts = batch
-        wav_gen = self.generate(prompts, num_steps=100, to_cpu=False, guidance_scale=0.3 if self.cfg_drop_prob > 0 else None)
+        wav_gen = self.generate(prompts, num_steps=50, to_cpu=False, guidance_scale=0.3 if self.cfg_drop_prob > 0 else None)
         self._update_fad(wav_gen.squeeze(1), wav_gt.squeeze(1))
         self._update_clap(wav_gen, prompts)
         if batch_idx == 0:
@@ -150,19 +150,6 @@ class DiffusionVAEPipeline(pl.LightningModule):
 
     @rank_zero_only
     def _plot_wavs(self, wav_gen, wav_gt, batch_idx):
-        # Specgram
-        for i in range(min(3, wav_gen.size(0))):
-            fig, axs = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
-            gen_sig = wav_gen[i].cpu().float().squeeze().numpy()
-            gt_sig  = wav_gt[i].cpu().float().squeeze().numpy()
-            axs[0].specgram(gen_sig, NFFT=256, Fs=16000, noverlap=128, scale='dB', mode='magnitude')
-            axs[0].set_title(f"Generated Audio {i+1}")
-            axs[1].specgram(gt_sig,  NFFT=256, Fs=16000, noverlap=128, scale='dB', mode='magnitude')
-            axs[1].set_title(f"Ground Truth Audio {i+1}")
-            plt.tight_layout()
-            plt.savefig(f"samples/spec_{self.current_epoch}_{i}.png")
-            plt.close(fig)
-        # Waveform
         for i in range(min(3, wav_gen.size(0))):
             fig = plt.figure(figsize=(10, 4))
             gen_sig = wav_gen[i].cpu().float().squeeze().numpy()
