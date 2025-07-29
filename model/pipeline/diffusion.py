@@ -32,7 +32,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
             if n.startswith("encoder.layers.11") or n.startswith("project_q"):
                 print(f"Making {n} trainable")
                 p.requires_grad_(True)
-        self.decoder = AudioDecoder(latent_ch, target_len=sample_length)
+        self.decoder = AudioDecoder(latent_ch)
         if not disable_text_enc:
             self.textenc = PromptEncoderv2(proj_dim=128, preset="mini", trainable=False)
         else:
@@ -114,8 +114,9 @@ class DiffusionVAEPipeline(pl.LightningModule):
         noise_pred = self.unet(noisy_z, t, prompt_e)
         loss_diff  = F.mse_loss(noise_pred, noise)
         kld = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
-        dec_wav = self.decoder(z, target_len=wav.size(-1))
-        rec = F.l1_loss(dec_wav, wav)
+        dec_wav = self.decoder(z)
+        gt_wav  = wav[..., :dec_wav.size(-1)]
+        rec = F.l1_loss(dec_wav, gt_wav)
         sigma = (0.5 * logvar).exp()
         loss = loss_diff + self.hparams.beta_kl * kld + self.hparams.beta_rec * rec
         self.log_dict(
@@ -216,5 +217,5 @@ class DiffusionVAEPipeline(pl.LightningModule):
         self.sched_eval.set_timesteps(num_steps, device=device)
         for t in self.sched_eval.timesteps:
             lat = self.sched_eval.step(eps_fn(lat, t), t, lat).prev_sample
-        wav = self.decoder(lat, target_len=self.hparams.sample_length)
+        wav = self.decoder(lat)
         return wav.cpu() if to_cpu else wav

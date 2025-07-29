@@ -78,20 +78,13 @@ class AudioDecoder(nn.Module):
 
         self.post = nn.Conv1d(64, 1, kernel_size=7, padding=3)
         self.tanh = nn.Tanh()
-        self.target_len = target_len
 
-    def forward(self, z, target_len=None):
+    def forward(self, z):
         h = self.prenet(z)
         h = self.transformer(h.transpose(1, 2)).transpose(1, 2)
         h = self.proj(h)
         h = self.up(h)
         wav = self.tanh(self.post(h))
-
-        if target_len is not None and wav.size(-1) != target_len:
-            print(f"[WARNING] Decoder output length mismatch! "
-                    f"Expected {target_len}, got {wav.size(-1)}. ")
-            wav = F.interpolate(wav, size=target_len,
-                                mode="linear", align_corners=False)
         return wav
 
 
