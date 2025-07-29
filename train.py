@@ -1,3 +1,7 @@
+import matplotlib
+matplotlib.use("Agg")
+from tqdm.auto import tqdm
+tqdm(disable=True)
 import os
 import argparse, pytorch_lightning as pl, torch
 from lightning.pytorch.profilers import SimpleProfiler

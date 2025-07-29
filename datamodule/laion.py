@@ -35,7 +35,7 @@ class LAIONAudioDataModule(pl.LightningDataModule):
     def __init__(
         self,
         batch_size: int = 32,
-        num_workers: int = 24,
+        num_workers: int = 12,
         sample_rate: int = 16_000,
         segment_ms: int = 1_000,
         val_pct: float = 0.0001,
