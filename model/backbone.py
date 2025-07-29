@@ -44,7 +44,7 @@ class ResStack(nn.Module):
 
 class AudioDecoder(nn.Module):
     def __init__(self, latent_ch=64, d_model=768, nhead=12,
-                 num_layers=12, target_len=160_000):
+                 num_layers=12):
         super().__init__()
         self.prenet = nn.Conv1d(latent_ch, d_model, 1)
 

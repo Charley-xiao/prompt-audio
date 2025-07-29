@@ -38,6 +38,7 @@ class DiffusionVAEPipeline(pl.LightningModule):
         else:
             cfg_drop_prob = 0
         latent_steps = sample_length // 320
+        self.latent_steps = latent_steps
         self.unet = CondUNet(latent_ch, 
                              cond_dim=128, 
                              latent_steps=latent_steps, 
@@ -115,6 +116,17 @@ class DiffusionVAEPipeline(pl.LightningModule):
         loss_diff  = F.mse_loss(noise_pred, noise)
         kld = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
         dec_wav = self.decoder(z)
+        assert dec_wav.size(-1) <= 32_000, (
+            f"Decoder output length exceeds 32,000: {dec_wav.size(-1)}!\n"
+            f"Shape of input wav: {wav.size()}\n"
+            f"Shape of latent z: {z.size()}\n"
+            f"Shape of mu: {mu.size()}\n"
+            f"Shape of logvar: {logvar.size()}\n"
+            f"Shape of prompt_e: {prompt_e.size()}\n"
+            f"Shape of noise_pred: {noise_pred.size()}\n"
+            f"Shape of noisy_z: {noisy_z.size()}\n"
+            f"Shape of t: {t.size()}\n"
+        )
         gt_wav  = wav[..., :dec_wav.size(-1)]
         rec = F.l1_loss(dec_wav, gt_wav)
         sigma = (0.5 * logvar).exp()
@@ -212,10 +224,14 @@ class DiffusionVAEPipeline(pl.LightningModule):
                 return eps_c + guidance_scale * (eps_c - eps_uc)
         lat = torch.randn(
             len(prompts), self.hparams.latent_ch,
-            self.hparams.sample_length // 8, device=device
+            self.latent_steps, device=device
         )
         self.sched_eval.set_timesteps(num_steps, device=device)
         for t in self.sched_eval.timesteps:
             lat = self.sched_eval.step(eps_fn(lat, t), t, lat).prev_sample
         wav = self.decoder(lat)
+        assert wav.size(-1) <= 32_000, (
+            f"Generated waveform length exceeds 32,000: {wav.size(-1)}!\n"
+            f"Shape of latent z: {lat.size()}\n"
+        )
         return wav.cpu() if to_cpu else wav
