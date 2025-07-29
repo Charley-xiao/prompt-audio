@@ -2,6 +2,7 @@ import os
 import argparse, pytorch_lightning as pl, torch
 from lightning.pytorch.profilers import SimpleProfiler
 from model.pipeline.diffusion import DiffusionVAEPipeline
+from model.pipeline.fm import FlowMatchingPipeline
 from datamodule.laion import LAIONAudioDataModule
 import torchaudio
 from pathlib import Path
@@ -58,6 +59,13 @@ if __name__ == "__main__":
     sample_len = args.segment_ms * 16  # 16 kHz
     if args.model == "diffusion":
         model = DiffusionVAEPipeline(
+            latent_ch=96, 
+            sample_length=sample_len, 
+            cfg_drop_prob=args.cfg_drop_prob,
+            disable_text_enc=args.disable_text_enc
+        )
+    elif args.model == "flow":
+        model = FlowMatchingPipeline(
             latent_ch=96, 
             sample_length=sample_len, 
             cfg_drop_prob=args.cfg_drop_prob,
