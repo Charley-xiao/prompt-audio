@@ -85,6 +85,7 @@ class DiffusionPipeline(pl.LightningModule):
             cond = self.textenc(prompts)
         keep_mask = (torch.rand(bsz, 1, device=device) >= self.cfg_drop_prob).float()
         cond_noised = cond * keep_mask
+        cond_noised = cond_noised.unsqueeze(1)
 
         # --- diffusion objective
         t = torch.randint(0, self.sched_train.config.num_train_timesteps, (bsz,), device=device, dtype=torch.long)
@@ -125,15 +126,15 @@ class DiffusionPipeline(pl.LightningModule):
 
         # Encode prompts
         if self.disable_text_enc:
-            cond = torch.zeros((len(prompts), 128), device=device)
+            cond = torch.zeros((len(prompts), 128), device=device).unsqueeze(1)
         else:
-            cond = torch.cat([self._cached_text(p) for p in prompts], dim=0)
+            cond = torch.cat([self._cached_text(p) for p in prompts], dim=0).unsqueeze(1)
 
         if guidance_scale is None:
             def eps_fn(x, t):
                 return self.unet(x.unsqueeze(-1), t, encoder_hidden_states=cond).sample.squeeze(-1)
         else:
-            uncond = torch.zeros_like(cond)
+            uncond = torch.zeros_like(cond).unsqueeze(1)
 
             def eps_fn(x, t):
                 eps_uc = self.unet(x.unsqueeze(-1), t, encoder_hidden_states=uncond).sample.squeeze(-1)
