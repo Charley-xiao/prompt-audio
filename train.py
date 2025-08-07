@@ -5,7 +5,8 @@ tqdm(disable=True)
 import os
 import argparse, pytorch_lightning as pl, torch
 from lightning.pytorch.profilers import SimpleProfiler
-from model.pipeline.diffusion import DiffusionVAEPipeline
+from model.pipeline.diffusionvae import DiffusionVAEPipeline
+from model.pipeline.diffusion import DiffusionPipeline
 from datamodule.laion import LAIONAudioDataModule
 import torchaudio
 from pathlib import Path
@@ -37,8 +38,7 @@ if __name__ == "__main__":
     p.add_argument("--data_files", type=str, default=None,
                    help="for debugging, specify a file or list of files to use")
     p.add_argument("--model", type=str, default="diffusion",
-                   choices=["diffusion", "flow"],
-                   help="Choose the model type: 'diffusion', 'flow' or 'vrfm'")
+                   choices=["diffusionvae", "diffusion"])
     p.add_argument("--ckpt_dir", type=str, default="checkpoints",
                    help="Directory to save model checkpoints")
     p.add_argument("--profile", action="store_true",
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     )
 
     sample_len = args.segment_ms * 16  # 16 kHz
-    if args.model == "diffusion":
+    if args.model == "diffusionvae":
         model = DiffusionVAEPipeline(
             latent_ch=96, 
             sample_length=sample_len, 
@@ -70,8 +70,13 @@ if __name__ == "__main__":
             disable_text_enc=args.disable_text_enc,
             lr=args.lr,
         )
-    else:
-        raise NotImplementedError(f"Model {args.model} is not implemented yet.")
+    elif args.model == "diffusion":
+        model = DiffusionPipeline(
+            sample_length=sample_len,
+            disable_text_enc=args.disable_text_enc,
+            cfg_drop_prob=args.cfg_drop_prob,
+            lr=args.lr,
+        )
 
     os.makedirs("samples/", exist_ok=True)
     if args.resume_from:
